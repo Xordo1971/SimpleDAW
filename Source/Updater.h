@@ -12,6 +12,9 @@
 
 #if JUCE_MAC || JUCE_LINUX
  #include <unistd.h>
+ #include <spawn.h>
+ #include <string>
+ extern char** environ;
 #elif JUCE_WINDOWS
  extern "C" __declspec(dllimport) unsigned long __stdcall GetCurrentProcessId();
 #endif
@@ -170,31 +173,54 @@ namespace Updater
        #if JUCE_MAC
         const auto app = juce::File::getSpecialLocation (juce::File::currentApplicationFile);   // .../SimpleDAW.app
         const auto script = downloadFolder().getChildFile ("instalar.sh");
+        const auto logFile = downloadFolder().getChildFile ("instalar.log");
+        // (solo ASCII en el guion: es texto plano para /bin/sh)
         script.replaceWithText (R"SH(#!/bin/sh
-# Instalador de actualizaciones de SimpleDAW (lo crea la propia aplicación)
-PID="$1"; DMG="$2"; APP="$3"
+# Instalador de actualizaciones de SimpleDAW (lo crea la propia aplicacion)
+PID="$1"; DMG="$2"; APP="$3"; LOG="$4"
+exec >>"$LOG" 2>&1
+trap '' HUP
+echo "== $(date) instalar $DMG en $APP (esperando a que se cierre el proceso $PID)"
 while kill -0 "$PID" 2>/dev/null; do sleep 0.5; done
+echo "SimpleDAW cerrado"
 MNT=$(mktemp -d /tmp/simpledaw-act.XXXXXX)
 if hdiutil attach -nobrowse -noautoopen -mountpoint "$MNT" "$DMG"; then
   NEW=$(find "$MNT" -maxdepth 1 -name '*.app' | head -1)
+  echo "app nueva: $NEW"
   if [ -n "$NEW" ] && rm -rf "$APP.anterior" && mv "$APP" "$APP.anterior" && ditto "$NEW" "$APP"; then
     rm -rf "$APP.anterior"
     xattr -dr com.apple.quarantine "$APP" 2>/dev/null
     hdiutil detach "$MNT" -quiet
+    rmdir "$MNT" 2>/dev/null
     rm -f "$DMG"
+    echo "instalada; se vuelve a abrir"
     open "$APP"
     exit 0
   fi
-  # No se pudo sustituir (permisos, app abierta desde el DMG...): se deja todo como estaba
+  echo "no se pudo sustituir la app (permisos?)"
   [ -d "$APP.anterior" ] && [ ! -d "$APP" ] && mv "$APP.anterior" "$APP"
   hdiutil detach "$MNT" -quiet
+  rmdir "$MNT" 2>/dev/null
 fi
 # Plan B: se abre el DMG para arrastrar la app a mano
+echo "plan B: se abre el DMG"
 open "$DMG"
 )SH");
-        const auto cmd = "nohup /bin/sh '" + script.getFullPathName() + "' " + juce::String ((int) getpid())
-                         + " '" + package.getFullPathName() + "' '" + app.getFullPathName() + "' >/dev/null 2>&1 &";
-        return std::system (cmd.toRawUTF8()) == 0;
+
+        // Se lanza en una sesión propia (setsid): si fuera hijo normal de SimpleDAW, macOS lo
+        // mataría junto con la app al cerrarse, y la actualización no se instalaría nunca.
+        std::string sh = "/bin/sh", path = script.getFullPathName().toStdString(),
+                    pid = std::to_string ((int) getpid()), dmg = package.getFullPathName().toStdString(),
+                    dest = app.getFullPathName().toStdString(), log = logFile.getFullPathName().toStdString();
+        char* argv[] = { sh.data(), path.data(), pid.data(), dmg.data(), dest.data(), log.data(), nullptr };
+
+        posix_spawnattr_t attr;
+        posix_spawnattr_init (&attr);
+        posix_spawnattr_setflags (&attr, POSIX_SPAWN_SETSID);
+        pid_t child = 0;
+        const int result = posix_spawn (&child, "/bin/sh", nullptr, &attr, argv, environ);
+        posix_spawnattr_destroy (&attr);
+        return result == 0;
 
        #elif JUCE_WINDOWS
         // El ZIP se descomprime ya; el .bat copia los archivos cuando SimpleDAW se ha cerrado

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SimpleDAW VERSION 1.5.0)
+project(SimpleDAW VERSION 1.5.1)
 
 set(CMAKE_CXX_STANDARD 17)
 # Windows: runtime de Visual C++ enlazado de forma estática (.exe portable)

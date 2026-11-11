@@ -3,6 +3,10 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.5.1
+- Arreglado: en Mac, la actualización automática se descargaba pero no se instalaba al cerrar SimpleDAW.
+  (Desde la 1.4.0 o la 1.5.0 hay que instalar esta versión a mano una vez; las siguientes ya se instalan solas.)
+
 ## 1.5.0
 - Plugins y efectos sin límite: cuando se ocupan los cuatro huecos de una sección, aparece uno nuevo (y así sucesivamente).
 - Nuevo menú «Ver > Acerca de SimpleDAW», con la pantalla de inicio y la versión.
