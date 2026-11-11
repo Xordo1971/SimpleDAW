@@ -90,6 +90,171 @@ private:
     float levelL = 0, levelR = 0, holdL = 0, holdR = 0;
 };
 
+// Aspecto de los canales del mezclador, al estilo de las consolas de Logic: gris medio, botones grises
+// con relieve, huecos hundidos, cajas de valor oscuras, fader metálico y potenciómetro claro.
+namespace StripLook
+{
+    const juce::Colour background     { 0xff4b4c4f };
+    const juce::Colour backgroundDark { 0xff3f4043 };
+    const juce::Colour slot           { 0xff3c3d40 };   // hueco vacío
+    const juce::Colour face           { 0xff686a6e };   // botones y huecos ocupados
+    const juce::Colour edge           { 0xff27282a };
+    const juce::Colour text           { 0xffe9eaec };
+    const juce::Colour textDim        { 0xffb3b5b9 };
+    const juce::Colour valueBox       { 0xff2a2b2d };
+    const juce::Colour muteOn         { 0xff47b4e6 };
+    const juce::Colour pluginMark     { 0xff79aef5 };
+    const juce::Colour effectMark     { 0xff86cf8f };
+
+    // Botón o hueco ocupado: gris con un degradado suave y borde oscuro
+    inline void drawFace (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour base, bool over, bool down)
+    {
+        auto c = down ? base.darker (0.25f) : over ? base.brighter (0.12f) : base;
+        g.setGradientFill (juce::ColourGradient (c.brighter (0.14f), 0, r.getY(), c.darker (0.14f), 0, r.getBottom(), false));
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.drawHorizontalLine ((int) r.getY() + 1, r.getX() + 2.0f, r.getRight() - 2.0f);
+        g.setColour (edge);
+        g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
+    }
+
+    // Hueco vacío: hundido, un poco más oscuro que el canal
+    inline void drawSlot (juce::Graphics& g, juce::Rectangle<float> r)
+    {
+        g.setColour (slot);
+        g.fillRoundedRectangle (r, 2.5f);
+        g.setColour (edge.withAlpha (0.7f));
+        g.drawRoundedRectangle (r.reduced (0.5f), 2.5f, 1.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.drawHorizontalLine ((int) r.getBottom(), r.getX() + 2.0f, r.getRight() - 2.0f);
+    }
+
+    // Caja de valor (volumen, pico): fondo casi negro y texto claro
+    inline void drawValueBox (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, juce::Colour textColour)
+    {
+        g.setColour (valueBox);
+        g.fillRoundedRectangle (r, 2.0f);
+        g.setColour (edge);
+        g.drawRoundedRectangle (r.reduced (0.5f), 2.0f, 1.0f);
+        g.setColour (textColour);
+        g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        g.drawText (text, r, juce::Justification::centred);
+    }
+}
+
+// Dibujo de los controles dentro de un canal (fader, potenciómetros y botones M/S/R/I)
+class StripLookAndFeel : public SimpleDAWLookAndFeel
+{
+public:
+    StripLookAndFeel()
+    {
+        setColour (juce::TextButton::textColourOffId, StripLook::text);
+        setColour (juce::TextButton::textColourOnId, juce::Colours::black);
+    }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
+    {
+        auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+        if (b.getToggleState())
+            StripLook::drawFace (g, r, b.findColour (juce::TextButton::buttonOnColourId), over, down);
+        else
+            StripLook::drawFace (g, r, StripLook::face, over, down);
+    }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int height) override
+    {
+        return juce::Font (juce::FontOptions (juce::jmin (13.0f, height * 0.6f), juce::Font::bold));
+    }
+
+    int getSliderThumbRadius (juce::Slider& s) override
+    {
+        return s.getSliderStyle() == juce::Slider::LinearVertical ? 19 : SimpleDAWLookAndFeel::getSliderThumbRadius (s);
+    }
+
+    // Fader: ranura fina oscura y tapa metálica alta con estrías
+    void drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float minPos, float maxPos,
+                           juce::Slider::SliderStyle style, juce::Slider& s) override
+    {
+        if (style != juce::Slider::LinearVertical)
+        {
+            SimpleDAWLookAndFeel::drawLinearSlider (g, x, y, w, h, pos, minPos, maxPos, style, s);
+            return;
+        }
+        const float cx = x + w * 0.5f;
+        juce::Rectangle<float> groove (cx - 2.0f, (float) y + 4.0f, 4.0f, (float) h - 8.0f);
+        g.setColour (juce::Colour (0xff1c1d1f));
+        g.fillRoundedRectangle (groove, 2.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.drawVerticalLine ((int) groove.getRight(), groove.getY(), groove.getBottom());
+
+        juce::Rectangle<float> cap (cx - 12.0f, pos - 19.0f, 24.0f, 38.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 3.0f);
+        juce::ColourGradient metal (juce::Colour (0xffe2e3e5), 0, cap.getY(), juce::Colour (0xff8d8f93), 0, cap.getBottom(), false);
+        metal.addColour (0.45, juce::Colour (0xffb9bbbe));
+        metal.addColour (0.55, juce::Colour (0xff9fa1a5));
+        g.setGradientFill (metal);
+        g.fillRoundedRectangle (cap, 3.0f);
+        g.setColour (StripLook::edge);
+        g.drawRoundedRectangle (cap.reduced (0.5f), 3.0f, 1.0f);
+        for (float dy : { -9.0f, -6.0f, 6.0f, 9.0f })   // estrías
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.28f));
+            g.drawHorizontalLine ((int) (pos + dy), cap.getX() + 4.0f, cap.getRight() - 4.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.35f));
+            g.drawHorizontalLine ((int) (pos + dy) + 1, cap.getX() + 4.0f, cap.getRight() - 4.0f);
+        }
+        g.setColour (juce::Colour (0xff2b2c2e));   // línea central (la posición del valor)
+        g.fillRect (cap.getX() + 2.0f, pos - 1.0f, cap.getWidth() - 4.0f, 2.0f);
+    }
+
+    // Potenciómetro claro con línea indicadora; anillo con el valor (desde el centro, o desde el
+    // principio y con el color del bus en los envíos)
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float prop,
+                           float startAngle, float endAngle, juce::Slider& slider) override
+    {
+        const bool fromStart = (bool) slider.getProperties().getWithDefault ("arcFromStart", false);
+        auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (1.0f);
+        const float size = juce::jmin (r.getWidth(), r.getHeight());
+        auto knob = r.withSizeKeepingCentre (size, size);
+        const auto c = knob.getCentre();
+        const float radius = size * 0.5f - 1.0f;
+        const float angle = startAngle + prop * (endAngle - startAngle);
+        const float centreAngle = fromStart ? startAngle : (startAngle + endAngle) * 0.5f;
+
+        juce::Path ring, value;
+        ring.addCentredArc (c.x, c.y, radius, radius, 0, startAngle, endAngle, true);
+        g.setColour (juce::Colour (0xff2a2b2d));
+        g.strokePath (ring, juce::PathStrokeType (2.5f));
+        if (std::abs (angle - centreAngle) > 0.01f)
+        {
+            value.addCentredArc (c.x, c.y, radius, radius, 0, juce::jmin (centreAngle, angle), juce::jmax (centreAngle, angle), true);
+            g.setColour (fromStart ? slider.findColour (juce::Slider::rotarySliderFillColourId) : StripLook::muteOn);
+            g.strokePath (value, juce::PathStrokeType (2.5f));
+        }
+
+        auto dome = knob.reduced (size * 0.16f);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillEllipse (dome.translated (0.0f, 1.5f));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd0d1d4), dome.getX(), dome.getY(),
+                                                 juce::Colour (0xff7c7e82), dome.getX(), dome.getBottom(), false));
+        g.fillEllipse (dome);
+        g.setColour (StripLook::edge);
+        g.drawEllipse (dome, 1.0f);
+
+        juce::Path pointer;
+        pointer.addRoundedRectangle (-1.0f, -dome.getHeight() * 0.5f + 1.5f, 2.0f, dome.getHeight() * 0.4f, 1.0f);
+        g.setColour (juce::Colour (0xff222325));
+        g.fillPath (pointer, juce::AffineTransform::rotation (angle).translated (c));
+    }
+
+    static StripLookAndFeel& get()
+    {
+        static StripLookAndFeel instance;
+        return instance;
+    }
+};
+
 // Huecos que se muestran en una sección: como mínimo 4 y siempre uno libre al final
 inline int insertSlotsFor (Track& t, Section s)
 {
@@ -114,24 +279,27 @@ public:
 
         if (! used)
         {
-            Theme::fillInset (g, r, Theme::panelDark, 3.0f);
+            StripLook::drawSlot (g, r);
             if (over && index == (int) list.size())
             {
-                g.setColour (Theme::textDim);
+                g.setColour (StripLook::textDim);
                 g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
                 g.drawText ("+", r, juce::Justification::centred);
             }
             return;
         }
 
+        // Ocupado: botón gris con una marca de color a la izquierda (azul: plugin, verde: efecto)
         auto& ins = *list[(size_t) index];
         const bool bypassed = ins.bypass.load();
-        const auto base = section == Section::plugins ? juce::Colour (0xff3d5a80) : juce::Colour (0xff4b6b55);
-        Theme::fillRaised (g, r, bypassed ? Theme::panelLight : (over ? base.brighter (0.15f) : base), 3.0f);
+        StripLook::drawFace (g, r, bypassed ? StripLook::slot.brighter (0.08f) : StripLook::face, over, false);
+        const auto mark = section == Section::plugins ? StripLook::pluginMark : StripLook::effectMark;
+        g.setColour (mark.withAlpha (bypassed ? 0.3f : 1.0f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (r.getX() + 3.0f, r.getY() + 4.0f, 3.0f, r.getHeight() - 8.0f), 1.5f);
 
-        g.setColour (bypassed ? Theme::textDim : Theme::text);
-        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-        g.drawFittedText (ins.processor->getName(), r.reduced (4.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+        g.setColour (bypassed ? StripLook::textDim.withAlpha (0.7f) : StripLook::text);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawFittedText (ins.processor->getName(), r.reduced (9.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
     }
 
     void mouseUp (const juce::MouseEvent& e) override
@@ -266,7 +434,8 @@ private:
     juce::Rectangle<int> pluginsLabel, effectsLabel;
 };
 
-// Canal del mezclador: plugins, efectos, panorama, fader con medidor, mute/solo y nombre
+// Canal del mezclador al estilo de Logic, de arriba abajo: plugins, efectos, envíos, panorama,
+// volumen y pico, fader con escala y medidor, grabar/monitor, mute/solo y nombre.
 class ChannelStrip : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -275,6 +444,8 @@ public:
     // buses: (hueco, bus) de los buses activos, para mostrar un envío a cada uno
     ChannelStrip (MixerHost& h, Track& t, const juce::Array<std::pair<int, Track*>>& buses = {}) : host (h), track (t)
     {
+        setLookAndFeel (&StripLookAndFeel::get());
+
         if (hasSends())
         {
             for (auto& [slot, bus] : buses)
@@ -293,7 +464,8 @@ public:
                 k->onValueChange = [this, sl, k] { track.send[sl] = (float) k->getValue(); };
                 addAndMakeVisible (k);
                 sendSlots.add (slot);
-                sendNames.add (shortBusName (bus->name));
+                sendNames.add (bus->name);
+                sendColours.add (bus->colour);
             }
         }
         setSlotCounts (insertSlotsFor (track, Section::plugins), insertSlotsFor (track, Section::effects));
@@ -313,27 +485,30 @@ public:
         fader.setRange (-60.0, 6.0, 0.1);
         fader.setSkewFactorFromMidPoint (-12.0);
         fader.setDoubleClickReturnValue (true, 0.0);
+        fader.setTooltip ("Volumen (doble clic: 0 dB)");
         fader.setValue (track.volumeDb.load(), juce::dontSendNotification);
         fader.onValueChange = [this] { track.volumeDb = (float) fader.getValue(); };
         fader.setWantsKeyboardFocus (false);
         addAndMakeVisible (fader);
         addAndMakeVisible (meter);
 
-        dbLabel.setJustificationType (juce::Justification::centred);
-        dbLabel.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 11.0f, juce::Font::plain));
-        dbLabel.setColour (juce::Label::backgroundColourId, juce::Colour (0xff15171a));
-        addAndMakeVisible (dbLabel);
-
+        setupToggle (muteButton, StripLook::muteOn, [this] (bool on) { track.mute = on; });
+        muteButton.setTooltip ("Silenciar");
         if (! track.isMaster && ! track.isBus)
         {
-            setupToggle (muteButton, Theme::muteBlue,   [this] (bool on) { track.mute = on; });
             setupToggle (soloButton, Theme::soloYellow, [this] (bool on) { track.solo = on; });
-        }
-        else
-        {
-            setupToggle (muteButton, Theme::muteBlue, [this] (bool on) { track.mute = on; });
+            soloButton.setTooltip ("Solo");
+            if (! track.isDrum())
+            {
+                setupToggle (armButton,     Theme::recordRed,     [this] (bool on) { track.armed = on; });
+                setupToggle (monitorButton, Theme::monitorOrange, [this] (bool on) { track.monitor = on; });
+                armButton.setTooltip ("Armar para grabar");
+                monitorButton.setTooltip (tr8 ("Monitorizar la entrada: escuchar la entrada por la salida (cuidado con la realimentación)"));
+            }
         }
     }
+
+    ~ChannelStrip() override { setLookAndFeel (nullptr); }
 
     Track& getTrack() { return track; }
 
@@ -348,6 +523,17 @@ public:
         effectSlots.clear();
         for (int i = 0; i < numPlugins; ++i) addAndMakeVisible (pluginSlots.add (new InsertSlot (host, track, Section::plugins, i)));
         for (int i = 0; i < numEffects; ++i) addAndMakeVisible (effectSlots.add (new InsertSlot (host, track, Section::effects, i)));
+        resized();
+        repaint();
+    }
+
+    // Filas de envíos: todos los canales reservan las mismas para que los faders queden a la misma altura
+    int numSends() const { return sendKnobs.size(); }
+    void setSendRows (int rows)
+    {
+        if (rows == sendRows)
+            return;
+        sendRows = rows;
         resized();
         repaint();
     }
@@ -377,6 +563,8 @@ public:
             pan.setValue (track.pan.load(), juce::dontSendNotification);
         muteButton.setToggleState (track.mute.load(), juce::dontSendNotification);
         soloButton.setToggleState (track.solo.load(), juce::dontSendNotification);
+        armButton.setToggleState (track.armed.load(), juce::dontSendNotification);
+        monitorButton.setToggleState (track.monitor.load(), juce::dontSendNotification);
         for (int b = 0; b < sendKnobs.size(); ++b)
         {
             const int slot = sendSlots[b];
@@ -385,7 +573,8 @@ public:
         }
 
         const float db = (float) fader.getValue();
-        dbLabel.setText (db <= -59.9f ? "-inf" : juce::String (db, 1), juce::dontSendNotification);
+        const auto volText = db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1);
+        if (volText != lastVolumeText) { lastVolumeText = volText; repaint (volumeBox); }
 
         const auto peakText = PeakReadout::text (track.outputHold, false);
         if (peakText != lastPeakText) { lastPeakText = peakText; repaint (peakBox); }
@@ -399,107 +588,128 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
-        g.setGradientFill (juce::ColourGradient (Theme::panelLight, 0, 0, Theme::panel.darker (0.15f), 0, r.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (StripLook::background.brighter (0.04f), 0, 0,
+                                                 StripLook::background.darker (0.08f), 0, r.getBottom(), false));
         g.fillRect (r);
-        g.setColour (Theme::border);
+        g.setColour (StripLook::edge);
         g.drawVerticalLine (getWidth() - 1, 0.0f, r.getBottom());
-        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.setColour (juce::Colours::white.withAlpha (0.07f));
         g.drawVerticalLine (0, 0.0f, r.getBottom());
 
-        g.setColour (Theme::textDim);
-        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-        g.drawText ("PLUGINS", pluginsLabel, juce::Justification::centredLeft);
-        g.drawText ("EFECTOS", effectsLabel, juce::Justification::centredLeft);
-        if (hasSends() && ! sendKnobs.isEmpty())
+        // Títulos de sección
+        g.setColour (StripLook::textDim);
+        g.setFont (juce::FontOptions (10.0f));
+        g.drawText ("Plugins", pluginsLabel, juce::Justification::centred);
+        g.drawText ("Efectos", effectsLabel, juce::Justification::centred);
+
+        // Envíos: una fila por bus, con su potenciómetro y el nombre en un hueco con su color
+        if (! sendKnobs.isEmpty())
         {
-            g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
-            g.drawText (tr8 ("ENVÍOS"), sendArea.withHeight (14), juce::Justification::centredLeft);
-            g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+            g.setColour (StripLook::textDim);
+            g.drawText (tr8 ("Envíos"), sendsLabel, juce::Justification::centred);
             for (int b = 0; b < sendKnobs.size(); ++b)
             {
-                auto k = sendKnobs[b]->getBounds();
-                g.setColour (Theme::text.withAlpha (0.85f));
-                g.drawFittedText (sendNames[b], k.getX() - 3, k.getY() - 12, k.getWidth() + 6, 11,
-                                  juce::Justification::centred, 1, 0.7f);
+                auto box = sendNameAreas[b].toFloat();
+                StripLook::drawSlot (g, box);
+                g.setColour (sendColours[b]);
+                g.fillEllipse (box.getX() + 4.0f, box.getCentreY() - 3.0f, 6.0f, 6.0f);
+                g.setColour (StripLook::text);
+                g.setFont (juce::FontOptions (10.5f));
+                g.drawFittedText (sendNames[b], box.withTrimmedLeft (13.0f).withTrimmedRight (2.0f).toNearestInt(),
+                                  juce::Justification::centred, 1, 0.75f);
             }
         }
-        if (track.isBus)
-        {
-            g.setColour (track.colour.withAlpha (0.10f));
-            g.fillRect (getLocalBounds());
-        }
 
-        // Escala de dB junto al fader
-        g.setFont (juce::FontOptions (9.0f));
-        for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -40.0f, -60.0f })
-        {
-            const float y = (float) fader.getY() + (float) fader.getPositionOfValue (db);
-            g.setColour (Theme::textDim.withAlpha (db == 0.0f ? 1.0f : 0.7f));
-            g.drawText (db == -60.0f ? "-inf" : juce::String ((int) db), scaleArea.getX(), (int) y - 6, scaleArea.getWidth(), 12,
-                        juce::Justification::centredRight);
-        }
-
+        // Volumen y pico, uno junto al otro
+        const float db = (float) fader.getValue();
+        StripLook::drawValueBox (g, volumeBox.toFloat(), db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1), StripLook::text);
         PeakReadout::draw (g, peakBox.toFloat(), track.outputHold, false);
 
-        // Nombre con el color de la pista
-        auto nameR = nameArea.toFloat().reduced (3.0f, 2.0f);
-        Theme::fillRaised (g, nameR, track.colour.darker (0.2f), 3.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.85f));
+        // Escala de dB entre el fader y el medidor
+        g.setFont (juce::FontOptions (8.5f));
+        float lastY = -100.0f;
+        for (float mark : { 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -15.0f, -18.0f, -24.0f, -30.0f, -40.0f, -50.0f, -60.0f })
+        {
+            const float y = (float) fader.getY() + (float) fader.getPositionOfValue (mark);
+            if (y - lastY < 9.0f)
+                continue;
+            lastY = y;
+            g.setColour (StripLook::textDim.withAlpha (mark == 0.0f ? 1.0f : 0.8f));
+            g.drawText (mark > 0.0f ? "+" + juce::String ((int) mark) : juce::String ((int) std::abs (mark)),
+                        scaleArea.getX(), (int) y - 5, scaleArea.getWidth() - 3, 10, juce::Justification::centredRight);
+            g.drawHorizontalLine ((int) y, (float) scaleArea.getRight() - 2.0f, (float) scaleArea.getRight());
+        }
+
+        // Nombre abajo, sobre fondo oscuro, con una franja del color de la pista
+        auto nameR = nameArea.toFloat();
+        g.setColour (StripLook::backgroundDark);
+        g.fillRect (nameR);
+        g.setColour (track.colour);
+        g.fillRect (nameR.removeFromTop (3.0f));
+        g.setColour (StripLook::text);
         g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-        g.drawFittedText (track.name, nameR.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+        g.drawFittedText (track.name, nameR.reduced (5.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
     }
 
     void resized() override
     {
-        auto r = getLocalBounds().reduced (6, 6);
-        nameArea = getLocalBounds().removeFromBottom (30);
-        r.removeFromBottom (30);
+        auto r = getLocalBounds().reduced (7, 6);
+        nameArea = getLocalBounds().removeFromBottom (28);
+        r.removeFromBottom (28);
 
         pluginsLabel = r.removeFromTop (14);
         for (auto* s : pluginSlots) { s->setBounds (r.removeFromTop (20)); r.removeFromTop (2); }
         r.removeFromTop (4);
         effectsLabel = r.removeFromTop (14);
         for (auto* s : effectSlots) { s->setBounds (r.removeFromTop (20)); r.removeFromTop (2); }
+        r.removeFromTop (4);
+
+        sendNameAreas.clear();
+        const int rows = juce::jmax (sendRows, sendKnobs.size());
+        if (rows > 0)
+        {
+            sendsLabel = r.removeFromTop (14);
+            for (int i = 0; i < rows; ++i)
+            {
+                auto row = r.removeFromTop (22);
+                if (i < sendKnobs.size())
+                {
+                    sendKnobs[i]->setBounds (row.removeFromLeft (22));
+                    row.removeFromLeft (3);
+                    sendNameAreas.add (row.reduced (0, 1));
+                }
+                r.removeFromTop (2);
+            }
+            r.removeFromTop (2);
+        }
+
+        pan.setBounds (r.removeFromTop (40).withSizeKeepingCentre (40, 40));
+        r.removeFromTop (5);
+        auto values = r.removeFromTop (18);
+        volumeBox = values.removeFromLeft (values.getWidth() / 2 - 2);
+        values.removeFromLeft (4);
+        peakBox = values;   // pico máximo de salida (clic: reiniciar)
         r.removeFromTop (6);
 
-        if (hasSends() && ! sendKnobs.isEmpty())
-        {
-            // Envíos: potenciómetros de 3 en 3, con el nombre corto del bus encima
-            const int n = sendKnobs.size(), perRow = juce::jmin (3, n), rowsCount = (n + 2) / 3;
-            sendArea = r.removeFromTop (14 + rowsCount * 42);
-            auto rows = sendArea.withTrimmedTop (14);
-            for (int row = 0; row < rowsCount; ++row)
-            {
-                auto line = rows.removeFromTop (42).withTrimmedTop (12);
-                const int inRow = juce::jmin (perRow, n - row * 3);
-                const int cellW = line.getWidth() / perRow;
-                auto cells = line.withSizeKeepingCentre (cellW * inRow, line.getHeight());
-                for (int i = 0; i < inRow; ++i)
-                    sendKnobs[row * 3 + i]->setBounds (cells.removeFromLeft (cellW).withSizeKeepingCentre (30, 30));
-            }
-            r.removeFromTop (4);
-        }
-
-        pan.setBounds (r.removeFromTop (38).withSizeKeepingCentre (38, 38));
-        r.removeFromTop (4);
-        peakBox = r.removeFromTop (17).reduced (8, 0);   // pico máximo de salida (clic: reiniciar)
-        r.removeFromTop (4);
-
-        auto buttons = r.removeFromBottom (24);
+        // Abajo: M/S y, encima, R/I (en todos los canales se reserva el sitio para que los faders cuadren)
+        auto msRow = r.removeFromBottom (22);
+        r.removeFromBottom (3);
+        auto riRow = r.removeFromBottom (20);
+        r.removeFromBottom (6);
+        const int half = msRow.getWidth() / 2 - 2;
         if (track.isMaster || track.isBus)
-            muteButton.setBounds (buttons.withSizeKeepingCentre (30, 24));
+            muteButton.setBounds (msRow.withSizeKeepingCentre (half, msRow.getHeight()));
         else
         {
-            muteButton.setBounds (buttons.removeFromLeft (buttons.getWidth() / 2).reduced (2, 0));
-            soloButton.setBounds (buttons.reduced (2, 0));
+            muteButton.setBounds (msRow.removeFromLeft (half));
+            soloButton.setBounds (msRow.removeFromRight (half));
+            armButton.setBounds (riRow.removeFromLeft (half));
+            monitorButton.setBounds (riRow.removeFromRight (half));
         }
-        r.removeFromBottom (4);
-        dbLabel.setBounds (r.removeFromBottom (18).reduced (10, 0));
-        r.removeFromBottom (4);
 
-        scaleArea = r.removeFromLeft (22);
-        meter.setBounds (r.removeFromRight (14));
-        r.removeFromRight (4);
+        meter.setBounds (r.removeFromRight (12));
+        r.removeFromRight (1);
+        scaleArea = r.removeFromRight (22);
         fader.setBounds (r);
     }
 
@@ -513,31 +723,23 @@ private:
         addAndMakeVisible (b);
     }
 
+    bool hasSends() const { return ! track.isMaster && ! track.isBus; }
+
     MixerHost& host;
     Track& track;
     juce::OwnedArray<InsertSlot> pluginSlots, effectSlots;
     juce::Slider pan, fader;
     StereoMeter meter;
-    juce::Label dbLabel;
-    juce::TextButton muteButton { "M" }, soloButton { "S" };
-    bool hasSends() const { return ! track.isMaster && ! track.isBus; }
-
-    static juce::String shortBusName (const juce::String& name)
-    {
-        static const char* known[][2] = { { "Reverb", "REV" }, { "Delay", "DLY" }, { "Chorus", "CHO" }, { "Flanger", "FLG" },
-                                          { "Phaser", "PHS" }, { "Pitch", "PIT" }, { "Ecualizador", "EQ" }, { "Compresor", "COMP" },
-                                          { "Overdrive", "OD" }, { "Ampli", "AMP" } };
-        for (auto& k : known)
-            if (name.equalsIgnoreCase (k[0]))
-                return k[1];
-        return name.substring (0, 5).toUpperCase();
-    }
+    juce::TextButton muteButton { "M" }, soloButton { "S" }, armButton { "R" }, monitorButton { "I" };
 
     juce::OwnedArray<juce::Slider> sendKnobs;
     juce::Array<int> sendSlots;
     juce::StringArray sendNames;
-    juce::Rectangle<int> pluginsLabel, effectsLabel, scaleArea, nameArea, peakBox, sendArea;
-    juce::String lastName, lastPeakText;
+    juce::Array<juce::Colour> sendColours;
+    juce::Array<juce::Rectangle<int>> sendNameAreas;
+    juce::Rectangle<int> pluginsLabel, effectsLabel, sendsLabel, scaleArea, nameArea, volumeBox, peakBox;
+    juce::String lastName, lastPeakText, lastVolumeText;
+    int sendRows = 0;
 };
 
 // El mezclador completo: todas las pistas con desplazamiento + master fijo a la derecha
@@ -577,6 +779,16 @@ public:
     {
         for (auto* s : strips) s->setSlotCounts (numPlugins, numEffects);
     }
+    int getMaxSends() const
+    {
+        int n = 0;
+        for (auto* s : strips) n = juce::jmax (n, s->numSends());
+        return n;
+    }
+    void setSendRows (int rows)
+    {
+        for (auto* s : strips) s->setSendRows (rows);
+    }
 
     void setTracks (const juce::Array<Track*>& tracks, const juce::Array<std::pair<int, Track*>>& buses = {})
     {
@@ -594,7 +806,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (Theme::background);
+        g.fillAll (StripLook::backgroundDark.darker (0.25f));
         if (strips.isEmpty())
         {
             g.setColour (Theme::textDim);

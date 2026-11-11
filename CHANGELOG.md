@@ -3,6 +3,11 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.7.0
+
+- Mezclador con aspecto nuevo, al estilo de Logic: canales gris medio, huecos de plugins y efectos con una marca de color (azul plugin, verde efecto), envíos en filas con el nombre y el color del bus, potenciómetro de panorama claro, volumen y pico uno junto al otro, fader metálico con la escala junto al medidor, y botones R (grabar) e I (monitorizar) encima de M y S.
+- Vuelve la tipografía del sistema (la Avenir Next dejaba la pantalla de tiempo demasiado pequeña).
+
 ## 1.6.2
 
 - Barra superior: los botones de ir al principio, parar, reproducir, grabar y ciclo pasan a la izquierda de la pantalla de tiempo; a su derecha quedan solo el metrónomo y el afinador.

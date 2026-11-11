@@ -18,15 +18,14 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   `isSane()` silencia y desactiva un efecto que se desboca (aviso en `MainComponent::timerCallback`); la salida se limita a ±1.
 - `MainComponent.*`: ventana principal, menús, proyectos (.sdaw = carpeta con XML + Audio/), deshacer global
   (`recordUndo(nombre, deshacer, rehacer)`; el primer "perform" no hace nada), buses, presets, actualizaciones.
-- `MixerComponent.h`: canales, envíos (potenciómetros, 3 por fila), `MixerHost`.
+- `MixerComponent.h`: canales al estilo de Logic (`StripLook`, `StripLookAndFeel`: gris medio, fader metálico,
+  envíos en filas, volumen/pico, R/I/M/S; todos reservan las mismas filas de envíos y huecos para alinear faders), `MixerHost`.
 - `TrackComponent.h`: cabecera y carril de cada pista (regiones, batería por compases, automatización).
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
 - `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1537x649; los mandos se dibujan girando
   la propia foto; coordenadas en píxeles de la imagen). Franja inferior: presets, pantalla, puerta de ruido.
 - `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
   amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
-- Tipografía: Avenir Next en toda la app (`SimpleDAWLookAndFeel::getTypefaceForFont`; en Windows, la de siempre si no está).
-  Los contadores de la pantalla usan `Theme::drawFixedDigits` para que las cifras no bailen.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).
 - `ResourceMeter.h` (CPU/RAM), `Updater.h` (actualizaciones desde GitHub Releases; al arrancar avisa y,
   tras actualizar, enseña las novedades del CHANGELOG.md incluido en la app), `Drums.h`/`DrumEditor.h`,
@@ -46,6 +45,7 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Zumbido enorme (Master a +247 dB) al cargar el preset de fábrica «Solo con delay» en el Mac del usuario
   (Clarett+ 2Pre, búfer 32). No se reproduce en las simulaciones. La 1.3.3 añadió la protección/aviso de
   efecto desbocado: el aviso dirá qué efecto falla.
-- Actualizaciones (Updater.h): código escrito y compilado; ya existe la Release 1.4.0, falta probar que una
-  versión instalada detecte y aplique una Release más nueva.
-  En Mac un script espera a que se cierre la app, monta el DMG y sustituye la .app; en Windows un .bat copia el ZIP.
+- Actualizaciones: probada en Mac la actualización automática de 1.6.1 a 1.6.2 (funciona). Falta probarla en Windows.
+  (El guion del Mac se escribe con saltos de línea "
+": con los "
+" por defecto de JUCE, sh falla.)

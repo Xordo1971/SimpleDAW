@@ -28,8 +28,7 @@ public:
                                 if (mainWindow != nullptr)
                                     if (auto* content = dynamic_cast<MainComponent*> (mainWindow->getContentComponent()))
                                     {
-                                        content->checkForRecovery();
-                                        content->showWhatsNewIfUpdated();
+                                        // Modo de capturas: no pregunta nada ni toca los ajustes de versión
                                         const auto captures = juce::SystemStats::getEnvironmentVariable ("SIMPLEDAW_CAPTURA", {});
                                         if (captures.isNotEmpty())
                                         {
@@ -38,7 +37,10 @@ public:
                                             {
                                                 if (c != nullptr) c->saveDiagnosticCaptures (juce::File (captures));
                                             });
+                                            return;
                                         }
+                                        content->checkForRecovery();
+                                        content->showWhatsNewIfUpdated();
                                         content->checkForUpdates (false);
                                     }
                             });

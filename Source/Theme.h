@@ -35,25 +35,6 @@ namespace Theme
         g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
     }
 
-    // Texto con las cifras en casillas del mismo ancho (Avenir Next tiene cifras de ancho variable y
-    // los contadores "bailarían" al cambiar). Alineado a la izquierda y centrado en vertical.
-    inline void drawFixedDigits (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area)
-    {
-        const auto font = g.getCurrentFont();
-        float digitW = 0.0f;
-        for (char c = '0'; c <= '9'; ++c)
-            digitW = juce::jmax (digitW, juce::GlyphArrangement::getStringWidth (font, juce::String::charToString (c)));
-        float x = area.getX();
-        for (auto ch : text)
-        {
-            const auto s = juce::String::charToString (ch);
-            const bool digit = ch >= '0' && ch <= '9';
-            const float w = digit ? digitW : juce::GlyphArrangement::getStringWidth (font, s);
-            g.drawText (s, juce::Rectangle<float> (x, area.getY(), w, area.getHeight()), juce::Justification::centred, false);
-            x += w;
-        }
-    }
-
     // Superficie hundida (pantallas, carriles de faders, medidores)
     inline void fillInset (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour base, float radius)
     {
@@ -117,33 +98,6 @@ namespace PeakReadout
 class SimpleDAWLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    // Tipografía de toda la aplicación: Avenir Next (normal y negrita). Se aplica a cualquier texto con la
-    // fuente por defecto, también la "monoespaciada". Si el sistema no la tiene (Windows), se usa la de siempre.
-    juce::Typeface::Ptr getTypefaceForFont (const juce::Font& font) override
-    {
-        const auto& name = font.getTypefaceName();
-        if (name == juce::Font::getDefaultSansSerifFontName() || name == juce::Font::getDefaultMonospacedFontName()
-             || name == juce::Font::getDefaultSerifFontName())
-        {
-            if (hasAvenir())
-            {
-                juce::Font f (font);
-                f.setTypefaceName ("Avenir Next");
-                f.setTypefaceStyle (font.isBold() ? (font.isItalic() ? "Bold Italic" : "Bold")
-                                                  : (font.isItalic() ? "Italic" : "Regular"));
-                if (auto t = juce::Typeface::createSystemTypefaceFor (f))
-                    return t;
-            }
-        }
-        return juce::LookAndFeel_V4::getTypefaceForFont (font);
-    }
-
-    static bool hasAvenir()
-    {
-        static const bool found = juce::Font::findAllTypefaceNames().contains ("Avenir Next");
-        return found;
-    }
-
     SimpleDAWLookAndFeel() : juce::LookAndFeel_V4 (juce::LookAndFeel_V4::getDarkColourScheme())
     {
         using namespace Theme;
@@ -570,13 +524,13 @@ public:
         }
         g.setColour (juce::Colour (0xffe9edf2));
         g.setFont (juce::FontOptions (mono, 21.0f, juce::Font::plain));
-        Theme::drawFixedDigits (g, position, posArea.toFloat().withTrimmedTop (12.0f));
+        g.drawText (position, posArea.toFloat().withTrimmedTop (12.0f), juce::Justification::centredLeft);
         separator (posArea);
 
         label (timeArea.toFloat(), "TIEMPO", Theme::textDim);
         g.setColour (juce::Colour (0xffc9ced6));
         g.setFont (juce::FontOptions (mono, 14.0f, juce::Font::plain));
-        Theme::drawFixedDigits (g, time, timeArea.toFloat().withTrimmedTop (12.0f));
+        g.drawText (time, timeArea.toFloat().withTrimmedTop (12.0f), juce::Justification::centredLeft);
         separator (timeArea);
 
         const bool overTempo = isMouseOver() && tempoArea.contains (getMouseXYRelative());

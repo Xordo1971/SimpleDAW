@@ -1102,6 +1102,9 @@ void MainComponent::updateMeters()
     mixer->getNeededSlots (numPluginSlots, numEffectSlots);
     masterStrip->setSlotCounts (numPluginSlots, numEffectSlots);
     mixer->setSlotCounts (numPluginSlots, numEffectSlots);
+    const int sendRows = mixer->getMaxSends();
+    masterStrip->setSendRows (sendRows);
+    mixer->setSendRows (sendRows);
 
     masterStrip->refresh();
     if (mixerReveal > 0.0f)
@@ -2968,13 +2971,23 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         {
             if (self == nullptr) return;
             save ("3-editor.png");
-            if (auto* top = self->getTopLevelComponent())
-                top->setSize (1340, 760);   // ancho mínimo de la ventana
-            juce::Timer::callAfterDelay (500, [self, save]
+            // Mezclador desplegado (el proyecto nuevo ya trae buses: se ven los envíos)
+            self->setEditorVisible (false);
+            if (! self->mixerOpen)
+                self->toggleMixer();
+            juce::Timer::callAfterDelay (700, [self, save]
             {
                 if (self == nullptr) return;
-                save ("4-minimo.png");
-                juce::JUCEApplication::getInstance()->systemRequestedQuit();
+                save ("7-mezclador.png");
+                if (auto* top = self->getTopLevelComponent())
+                    top->setSize (1340, 760);   // ancho mínimo de la ventana
+                juce::Timer::callAfterDelay (500, [self, save]
+                {
+                    if (self == nullptr) return;
+                    save ("4-minimo.png");
+                    self->clearRecovery();
+                    juce::JUCEApplicationBase::quit();   // sin preguntar si se guarda
+                });
             });
         });
     });
