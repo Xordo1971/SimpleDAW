@@ -730,7 +730,7 @@ void MainComponent::showInsertMenu (Track& track, Section section, int slot, juc
 {
     juce::PopupMenu menu;
     const auto types = knownPlugins.getTypes();
-    constexpr int scanId = 1, firstEffectId = 100;
+    static constexpr int scanId = 1, firstEffectId = 100;
 
     if (section == Section::effects)
     {
@@ -3153,7 +3153,7 @@ void MainComponent::drumFromXml (Drums::DrumData& d, const juce::XmlElement& x)
         {
             const auto row = px->getStringAttribute ("i" + juce::String (i));
             for (int s = 0; s < juce::jmin (row.length(), Drums::maxSteps); ++s)
-                d.patterns[(size_t) p].steps[(size_t) i][(size_t) s] = (uint8_t) juce::jlimit (0, 3, row[s] - '0');
+                d.patterns[(size_t) p].steps[(size_t) i][(size_t) s] = (uint8_t) juce::jlimit (0, 3, (int) row[s] - (int) '0');
         }
     }
 
