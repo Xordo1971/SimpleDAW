@@ -1,0 +1,45 @@
+# Compila SimpleDAW automáticamente para Windows y macOS en los servidores de GitHub.
+# Se ejecuta en cada cambio y también a mano desde la pestaña "Actions".
+name: Compilar SimpleDAW
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDK de ASIO (opcional)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://www.steinberg.net/asiosdk' -OutFile asiosdk.zip -UseBasicParsing
+          Expand-Archive asiosdk.zip -DestinationPath ThirdParty/asiosdk -Force
+      - name: Configurar
+        run: cmake -B build
+      - name: Compilar
+        run: cmake --build build --config Release --parallel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimpleDAW-Windows
+          path: build/SimpleDAW_artefacts/Release/SimpleDAW.exe
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar (binario universal: Apple Silicon e Intel)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+      - name: Compilar
+        run: cmake --build build --config Release --parallel
+      - name: Firmar (ad hoc) y empaquetar
+        run: |
+          APP="$(find build/SimpleDAW_artefacts -maxdepth 3 -name 'SimpleDAW.app' | head -1)"
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" SimpleDAW-Mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimpleDAW-Mac
+          path: SimpleDAW-Mac.zip

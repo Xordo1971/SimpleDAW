@@ -1,0 +1,20 @@
+ASIO en Windows
+===============
+
+Con ASIO, SimpleDAW usa directamente el driver de tu interfaz (por ejemplo el de
+Focusrite) y la latencia es mucho más baja y estable que con "Windows Audio".
+
+compilar.bat intenta descargar el SDK automáticamente. Si no lo consigue:
+
+1. Descarga el "ASIO SDK" de la web de Steinberg para desarrolladores
+   (https://www.steinberg.net/developers/ ; es gratuito).
+2. Descomprímelo aquí, de forma que exista la carpeta:
+       ThirdParty\asiosdk\...\common\iasiodrv.h
+   (el nombre de la carpeta intermedia da igual).
+3. Borra la carpeta "build" y vuelve a ejecutar compilar.bat.
+
+Al abrir SimpleDAW, en "Audio" elige el tipo "ASIO" y tu interfaz.
+
+Licencia: el SDK de ASIO es de Steinberg (licencia GPLv3 o propietaria).
+Para uso personal no hay ningún problema; si algún día quisieras distribuir
+SimpleDAW con ASIO, habría que revisar esa licencia.

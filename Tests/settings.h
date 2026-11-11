@@ -1,0 +1,16 @@
+#define JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED 1
+#define JUCE_USE_CURL 0
+#define JUCE_MODULE_AVAILABLE_juce_core 1
+#define JUCE_MODULE_AVAILABLE_juce_audio_basics 1
+#define JUCE_MODULE_AVAILABLE_juce_dsp 1
+#define JUCE_STANDALONE_APPLICATION 0
+#define JUCE_MODULE_AVAILABLE_juce_audio_formats 1
+#define JUCE_MODULE_AVAILABLE_juce_events 1
+#define JUCE_MODULE_AVAILABLE_juce_audio_devices 1
+#define JUCE_MODULE_AVAILABLE_juce_audio_processors_headless 1
+#define JUCE_ALSA 0
+#define JUCE_JACK 0
+#define JUCE_PLUGINHOST_VST3 0
+#define JUCE_PLUGINHOST_LADSPA 0
+#define JUCE_PLUGINHOST_LV2 0
+#define JUCE_MODULE_AVAILABLE_juce_data_structures 1

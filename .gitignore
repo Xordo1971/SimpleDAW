@@ -1,0 +1,6 @@
+build/
+build-*/
+ThirdParty/asiosdk/
+.DS_Store
+*.user
+.vs/

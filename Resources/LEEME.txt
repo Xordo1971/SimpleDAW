@@ -1,0 +1,18 @@
+Imágenes de SimpleDAW
+=====================
+
+Coloca aquí estos dos archivos (con estos nombres exactos) y vuelve a compilar:
+
+  icon.png      Icono de la aplicación. Cuadrado, idealmente 1024x1024 px,
+                con fondo transparente o con las esquinas ya redondeadas.
+                Se usa en el Dock / Finder (Mac) y en el .exe (Windows).
+
+  logo-app.png  Logotipo de la barra superior. Fondo transparente.
+                Se muestra a unos 34 px de alto, así que conviene que tenga
+                al menos 100 px de alto para que se vea nítido en pantallas Retina.
+
+Si alguno falta, SimpleDAW compila igualmente (sin icono propio, o con el
+nombre escrito en lugar del logotipo).
+
+Importante: tras añadir o cambiar las imágenes, borra la carpeta build-mac
+(o build en Windows) antes de compilar.

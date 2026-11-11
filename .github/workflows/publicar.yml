@@ -1,0 +1,106 @@
+# Compila SimpleDAW para Mac (DMG) y Windows (ZIP) y lo publica como "Release" en GitHub.
+#
+# Cómo se usa:
+#   1. Sube la versión en CMakeLists.txt:   project(SimpleDAW VERSION 1.4.0)
+#   2. Crea y sube la etiqueta:             git tag v1.4.0   y   git push origin v1.4.0
+#   3. En unos 15-20 minutos aparece en la pestaña "Releases" del repositorio, con el DMG y el ZIP.
+#      Las copias de SimpleDAW instaladas lo detectan solas y ofrecen actualizarse.
+#
+# También se puede lanzar a mano desde la pestaña "Actions" (sin publicar: solo deja los archivos).
+
+name: Compilar y publicar
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Leer la versión de CMakeLists.txt
+        run: |
+          VERSION=$(sed -n 's/^project(SimpleDAW VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          echo "Versión: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$VERSION" ]; then
+            echo "::error::La etiqueta ${GITHUB_REF_NAME} no coincide con la versión de CMakeLists.txt (v$VERSION)"
+            exit 1
+          fi
+
+  mac:
+    needs: version
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar (Apple Silicon + Intel)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+                -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+                -DSIMPLEDAW_GITHUB_REPO="${{ github.repository }}"
+          cmake --build build --config Release -j 4
+      - name: Firmar (firma local, sin cuenta de desarrollador) y crear el DMG
+        run: |
+          APP=$(find build/SimpleDAW_artefacts -maxdepth 3 -name 'SimpleDAW.app' | head -1)
+          codesign --force --deep --sign - "$APP"
+          mkdir dmg
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Aplicaciones
+          hdiutil create -volname "SimpleDAW" -srcfolder dmg -ov -format UDZO \
+                  "SimpleDAW-${{ needs.version.outputs.version }}-mac.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: SimpleDAW-*-mac.dmg
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDK de ASIO (si se puede descargar)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Invoke-WebRequest -Uri 'https://www.steinberg.net/asiosdk' -OutFile asiosdk.zip -UseBasicParsing
+          Expand-Archive asiosdk.zip -DestinationPath ThirdParty/asiosdk -Force
+      - name: Compilar
+        run: |
+          cmake -B build -DSIMPLEDAW_GITHUB_REPO="${{ github.repository }}"
+          cmake --build build --config Release
+      - name: Crear el ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path paquete | Out-Null
+          Copy-Item build/SimpleDAW_artefacts/Release/SimpleDAW.exe paquete/
+          Compress-Archive -Path paquete/* -DestinationPath "SimpleDAW-${{ needs.version.outputs.version }}-windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: SimpleDAW-*-windows.zip
+
+  publicar:
+    if: github.ref_type == 'tag'
+    needs: [ version, mac, windows ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publicar la versión
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SimpleDAW ${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            SimpleDAW-*-mac.dmg
+            SimpleDAW-*-windows.zip
