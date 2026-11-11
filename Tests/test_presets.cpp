@@ -62,12 +62,12 @@ int main()
     CHECK (other.presetName == "Copia" || other.presetName == "Prueba", "nombre recuperado (%s)", other.presetName.toRawUTF8());
     CHECK (plain (other, "channel") == 2, "y sus ajustes");
 
-    printf ("5) Si no cabe todo, avisa\n");
+    printf ("5) Ya no hay límite de huecos: solo se descarta lo desconocido\n");
     juce::String big = "<SIMPLEDAW_PRESET name=\"X\"><EFFECT type=\"Ampli\"/>";
     for (int i = 0; i < 5; ++i) big += "<EFFECT type=\"Reverb\"/>";
     big += "<EFFECT type=\"NoExiste\"/></SIMPLEDAW_PRESET>";
     skipped = Presets::applyChain (rig.engine, *t, amp, *juce::XmlDocument::parse (big), nullptr);
-    CHECK (skipped == 3 && l.size() == 4, "3 descartados (2 que no caben + 1 desconocido): %d", skipped);
+    CHECK (skipped == 1 && l.size() == 6, "1 descartado (el desconocido), 6 efectos: %d, %d", skipped, (int) l.size());
     printf ("%s (%d fallos)\n", failures ? "HAY FALLOS" : "TODO BIEN", failures);
     return failures;
 }

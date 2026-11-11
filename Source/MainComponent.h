@@ -16,6 +16,7 @@
 #include "PresetChain.h"
 #include "ResourceMeter.h"
 #include "Updater.h"
+#include "Splash.h"
 #include <map>
 
 // Barra para cambiar la altura del editor arrastrando
@@ -86,6 +87,7 @@ public:
     // Al arrancar: si quedó una sesión sin cerrar bien, ofrecer recuperarla
     void checkForRecovery();
     void checkForUpdates (bool askedByUser);   // GitHub: ¿hay una versión nueva?
+    void showWhatsNewIfUpdated();              // tras actualizar: novedades de la versión nueva (CHANGELOG.md)
 
     // Soltar archivos fuera de una pista: se crean pistas nuevas
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -211,6 +213,9 @@ private:
     void saveAppSettings();
     void offerUpdate (const Updater::Release&);
     juce::String skippedVersion;   // "Saltar esta versión"
+    juce::String lastRunVersion;   // versión con la que se abrió la última vez (para enseñar las novedades)
+    std::unique_ptr<SplashWindow> aboutWindow;   // "Ver > Acerca de SimpleDAW"
+    void showAbout();
     bool updateWaiting = false;    // ya descargada: se instala al cerrar
     void showMetronomeOptions();
     void setTempo (double bpm);

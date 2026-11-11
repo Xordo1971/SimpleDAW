@@ -19,3 +19,7 @@ Compilación (Linux), con `J` = carpeta `modules` de JUCE 8.0.12:
 - `test_amp` ampli · `test_presets` presets · `test_runaway` protección contra efectos desbocados
 - `test_solo`, `test_live32`, `test_blow` diagnóstico del zumbido del preset «Solo con delay»
 - `test_drumxml`, `test_speed` guardado de batería y cambio de velocidad
+
+En Mac (clang), con `J` = `build-mac/_deps/juce-src/modules`: igual, pero compilando como
+Objective-C++ (`clang++ -x objective-c++`, módulos en archivos `.mm`) y enlazando los frameworks
+`Cocoa CoreAudio CoreMIDI AudioToolbox Accelerate IOKit CoreAudioKit AudioUnit Security QuartzCore`.

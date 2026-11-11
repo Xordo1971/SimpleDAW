@@ -1001,6 +1001,13 @@ void MainComponent::updateMeters()
     for (auto& b : activeBuses())
         read (*b.second);
 
+    // Huecos de plugins/efectos: al llenarse los de un canal se abre uno más en todos (faders alineados)
+    int numPluginSlots = masterStrip->neededSlots (Section::plugins);
+    int numEffectSlots = masterStrip->neededSlots (Section::effects);
+    mixer->getNeededSlots (numPluginSlots, numEffectSlots);
+    masterStrip->setSlotCounts (numPluginSlots, numEffectSlots);
+    mixer->setSlotCounts (numPluginSlots, numEffectSlots);
+
     masterStrip->refresh();
     if (mixerReveal > 0.0f)
         mixer->refresh();
@@ -2075,7 +2082,7 @@ namespace MenuIds
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
         newTrack = 10, importAudio, transpose, speed, newDrumTrack,
-        mixer = 20, editor, plugins, audioSettings,
+        mixer = 20, editor, plugins, audioSettings, about,
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
 }
@@ -2161,6 +2168,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         m.addSeparator();
         add (MenuIds::plugins,       "Plugins...");
         add (MenuIds::audioSettings, "Ajustes de audio...");
+        m.addSeparator();
+        add (MenuIds::about,         "Acerca de SimpleDAW");
     }
     return m;
 }
@@ -2195,6 +2204,7 @@ void MainComponent::menuItemSelected (int itemId, int)
         case MenuIds::editor:        toggleEditor(); break;
         case MenuIds::plugins:       showPluginManager(); break;
         case MenuIds::audioSettings: showAudioSettings(); break;
+        case MenuIds::about:         showAbout(); break;
         case MenuIds::play:          togglePlay(); break;
         case MenuIds::record:        toggleRecord(); break;
         case MenuIds::toStart:       goToStart(); break;
@@ -2370,6 +2380,8 @@ void MainComponent::loadAppSettings()
         const double sr = engine.getSampleRate() > 0 ? engine.getSampleRate() : 48000.0;
         engine.manualLatencySamples = (int) std::lround (ms * sr / 1000.0);
         skippedVersion = xml->getStringAttribute ("skipVersion");
+        // Sin el dato (ajustes de la 1.4.0 o anterior): se trata como una actualización
+        lastRunVersion = xml->getStringAttribute ("lastVersion", "0");
     }
 }
 
@@ -2380,6 +2392,7 @@ void MainComponent::saveAppSettings()
     xml.setAttribute ("manualLatencyMs", engine.manualLatencySamples.load() * 1000.0 / sr);
     if (skippedVersion.isNotEmpty())
         xml.setAttribute ("skipVersion", skippedVersion);
+    xml.setAttribute ("lastVersion", lastRunVersion.isNotEmpty() ? lastRunVersion : Updater::currentVersion());
     xml.writeTo (AppPaths::appSettings());
 }
 
@@ -2748,6 +2761,68 @@ void MainComponent::offerUpdate (const Updater::Release& release)
             }), true);
         }))->launchThread();
     }), true);
+}
+
+// Novedades de las versiones posteriores a "after" (hasta la actual), leídas del CHANGELOG.md incluido en la app
+static juce::String changelogSince (const juce::String& after)
+{
+    juce::String text;
+   #if SIMPLEDAW_HAS_BINARYDATA
+    int size = 0;
+    if (auto* data = BinaryData::getNamedResource ("CHANGELOG_md", size))
+    {
+        juce::StringArray lines;
+        lines.addLines (juce::String::fromUTF8 (data, size));
+        bool include = false;
+        for (auto& line : lines)
+        {
+            if (line.startsWith ("## "))
+            {
+                const auto v = line.substring (3).trim();
+                include = Updater::isNewer (v, after) && ! Updater::isNewer (v, Updater::currentVersion());
+                if (include)
+                    text << (text.isEmpty() ? "" : "\n") << tr8 ("Versión ") << v << ":\n";
+            }
+            else if (include && line.trim().isNotEmpty() && ! line.trimStart().startsWith ("<!--"))
+                text << line.trim() << "\n";
+        }
+    }
+   #else
+    juce::ignoreUnused (after);
+   #endif
+    return text.trim();
+}
+
+void MainComponent::showWhatsNewIfUpdated()
+{
+    const auto previous = lastRunVersion;
+    lastRunVersion = Updater::currentVersion();
+    saveAppSettings();
+
+    // Primera vez que se abre (instalación nueva) o la misma versión: nada que enseñar
+    if (previous.isEmpty() || ! Updater::isNewer (Updater::currentVersion(), previous))
+        return;
+
+    const auto notes = changelogSince (previous);
+    if (notes.isEmpty())
+        return;
+
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
+        tr8 ("SimpleDAW se ha actualizado a la ") + Updater::currentVersion(), tr8 ("Novedades:\n\n") + notes);
+}
+
+// ===================== Acerca de =====================
+
+void MainComponent::showAbout()
+{
+    if (aboutWindow != nullptr)
+    {
+        aboutWindow->toFront (true);
+        return;
+    }
+    aboutWindow = std::make_unique<SplashWindow> ("v" + Updater::currentVersion(), true);
+    juce::Component::SafePointer<MainComponent> self (this);
+    aboutWindow->setOnClosed ([self] { if (self != nullptr) self->aboutWindow = nullptr; });
 }
 
 // ===================== Deshacer global =====================

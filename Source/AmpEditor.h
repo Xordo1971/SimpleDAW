@@ -361,7 +361,7 @@ private:
         repaint();
         if (skipped > 0)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Preset",
-                juce::String (skipped) + tr8 (" efecto(s) del preset no se han añadido: no caben más de 4 por sección o no se reconocen."));
+                juce::String (skipped) + tr8 (" efecto(s) del preset no se han añadido: no se reconocen."));
     }
 
     void showPresetMenu()

@@ -29,12 +29,17 @@ namespace Brand
 //   2. Las barras del ecualizador de los auriculares cobran vida.
 //   3. Abajo, una onda de barras amarillas y el estado de la carga.
 //   4. Al terminar, se desvanece sobre la ventana principal.
+// También sirve de ventana "Acerca de" (aboutMode): se queda abierta hasta hacer clic o pulsar Esc.
 // ============================================================================
 class SplashWindow : public juce::Component, private juce::Timer
 {
 public:
-    explicit SplashWindow (const juce::String& versionText) : version (versionText)
+    explicit SplashWindow (const juce::String& versionText, bool aboutMode = false)
+        : version (versionText), about (aboutMode)
     {
+        if (about)
+            status = "Haz clic para cerrar";
+
         logo = Brand::loadImage ("logofull_png");
         if (logo.isValid())
         {
@@ -45,11 +50,17 @@ public:
 
         setOpaque (false);
         setSize (640, 404);
-        addToDesktop (juce::ComponentPeer::windowHasDropShadow | juce::ComponentPeer::windowIgnoresKeyPresses);
+        addToDesktop (juce::ComponentPeer::windowHasDropShadow
+                      | (about ? 0 : juce::ComponentPeer::windowIgnoresKeyPresses));
         centreWithSize (getWidth(), getHeight());
         setAlwaysOnTop (true);
         setVisible (true);
-        toFront (false);
+        toFront (about);
+        if (about)
+        {
+            setWantsKeyboardFocus (true);
+            grabKeyboardFocus();
+        }
 
         startMs = juce::Time::getMillisecondCounterHiRes();
         startTimerHz (60);
@@ -64,6 +75,25 @@ public:
         fadeStartCallback = std::move (onFadeStart);
         doneCallback = std::move (onDone);
         finishRequested = true;
+    }
+
+    // Ventana "Acerca de": se cierra (desvaneciéndose) al hacer clic o pulsar Esc / Intro.
+    // onClosed se llama cuando ya está oculta, para destruirla.
+    void setOnClosed (std::function<void()> cb) { doneCallback = std::move (cb); }
+    void closeNow()
+    {
+        if (fadeStart < 0.0f)
+            fadeStart = elapsed();
+    }
+    void mouseUp (const juce::MouseEvent&) override { if (about) closeNow(); }
+    bool keyPressed (const juce::KeyPress& k) override
+    {
+        if (about && (k == juce::KeyPress::escapeKey || k == juce::KeyPress::returnKey || k == juce::KeyPress::spaceKey))
+        {
+            closeNow();
+            return true;
+        }
+        return false;
     }
 
     void paint (juce::Graphics& g) override
@@ -118,11 +148,12 @@ public:
 
         g.setFont (juce::FontOptions (11.5f));
         g.setColour (juce::Colours::white.withAlpha (0.55f * waveIn));
-        g.drawText (status + "   " + version, juce::Rectangle<float> (22.0f, 374.0f, 300.0f, 18.0f), juce::Justification::centredLeft);
+        g.drawText (status, juce::Rectangle<float> (22.0f, 374.0f, 300.0f, 18.0f), juce::Justification::centredLeft);
 
         g.setFont (juce::FontOptions (11.0f));
         g.setColour (juce::Colours::white.withAlpha (0.5f * waveIn));
-        g.drawText ("Creado por Paco Frade", juce::Rectangle<float> (330.0f, 374.0f, 288.0f, 18.0f), juce::Justification::centredRight);
+        g.drawText (tr8 ("Creado por Paco Frade  ·  ") + version,
+                    juce::Rectangle<float> (330.0f, 374.0f, 288.0f, 18.0f), juce::Justification::centredRight);
 
         // Línea de progreso amarilla (avanza durante la duración mínima)
         const float progress = juce::jlimit (0.0f, 1.0f, t / minDuration);
@@ -219,7 +250,7 @@ private:
     juce::Image logo, leftHalf, rightHalf;
     juce::String version, status { tr8 ("Iniciando...") };
     double startMs = 0.0;
-    bool finishRequested = false;
+    bool finishRequested = false, about = false;
     float fadeStart = -1.0f;
     std::function<void()> fadeStartCallback, doneCallback;
 };

@@ -100,7 +100,8 @@ enum class Section { plugins = 0, effects = 1 };
 
 struct Track
 {
-    static constexpr int maxInsertsPerSection = 4;
+    // Huecos que se ven siempre en cada sección; al llenarse se abre uno más (sin límite)
+    static constexpr int minInsertSlots = 4;
 
     ~Track() { delete recorder; }
 
@@ -390,7 +391,7 @@ public:
     juce::CriticalSection& getLock()     { return lock; }
 
     // ---------- Inserciones (efectos y plugins) ----------
-    // Prepara el procesador y lo coloca en el canal. Devuelve false si la sección está llena.
+    // Prepara el procesador y lo coloca en el canal (las secciones no tienen límite de huecos).
     bool addInsert (Track& t, Section s, std::unique_ptr<juce::AudioProcessor> p, bool external, int slot = -1)
     {
         if (p == nullptr)
@@ -404,8 +405,6 @@ public:
 
         const juce::ScopedLock sl (lock);
         auto& list = t.getInserts (s);
-        if ((int) list.size() >= Track::maxInsertsPerSection)
-            return false;
         if (slot < 0 || slot > (int) list.size())
             slot = (int) list.size();
         list.insert (list.begin() + slot, std::move (ins));

@@ -29,6 +29,7 @@ public:
                                     if (auto* content = dynamic_cast<MainComponent*> (mainWindow->getContentComponent()))
                                     {
                                         content->checkForRecovery();
+                                        content->showWhatsNewIfUpdated();
                                         content->checkForUpdates (false);
                                     }
                             });

@@ -90,6 +90,12 @@ private:
     float levelL = 0, levelR = 0, holdL = 0, holdR = 0;
 };
 
+// Huecos que se muestran en una sección: como mínimo 4 y siempre uno libre al final
+inline int insertSlotsFor (Track& t, Section s)
+{
+    return juce::jmax (Track::minInsertSlots, (int) t.getInserts (s).size() + 1);
+}
+
 // Una ranura de inserción (efecto o plugin)
 class InsertSlot : public juce::Component, public juce::SettableTooltipClient
 {
@@ -208,14 +214,9 @@ private:
 class InsertPanel : public juce::Component, private juce::Timer
 {
 public:
-    InsertPanel (MixerHost& h, Track& t)
+    InsertPanel (MixerHost& h, Track& t) : host (h), track (t)
     {
-        for (int i = 0; i < Track::maxInsertsPerSection; ++i)
-        {
-            addAndMakeVisible (pluginSlots.add (new InsertSlot (h, t, Section::plugins, i)));
-            addAndMakeVisible (effectSlots.add (new InsertSlot (h, t, Section::effects, i)));
-        }
-        setSize (190, 2 * (16 + Track::maxInsertsPerSection * 24) + 14);
+        updateSlots();
         startTimerHz (15);
     }
 
@@ -238,12 +239,29 @@ public:
     }
 
 private:
+    // Crea los huecos que hagan falta (al llenarse una sección aparece uno más) y ajusta el tamaño
+    void updateSlots()
+    {
+        const int np = insertSlotsFor (track, Section::plugins), ne = insertSlotsFor (track, Section::effects);
+        if (np == pluginSlots.size() && ne == effectSlots.size())
+            return;
+        pluginSlots.clear();
+        effectSlots.clear();
+        for (int i = 0; i < np; ++i) addAndMakeVisible (pluginSlots.add (new InsertSlot (host, track, Section::plugins, i)));
+        for (int i = 0; i < ne; ++i) addAndMakeVisible (effectSlots.add (new InsertSlot (host, track, Section::effects, i)));
+        setSize (190, 2 * 16 + (np + ne) * 24 + 14);   // el globo (CallOutBox) se recoloca solo
+        resized();
+    }
+
     void timerCallback() override
     {
+        updateSlots();
         for (auto* s : pluginSlots) s->repaint();
         for (auto* s : effectSlots) s->repaint();
     }
 
+    MixerHost& host;
+    Track& track;
     juce::OwnedArray<InsertSlot> pluginSlots, effectSlots;
     juce::Rectangle<int> pluginsLabel, effectsLabel;
 };
@@ -278,11 +296,7 @@ public:
                 sendNames.add (shortBusName (bus->name));
             }
         }
-        for (int i = 0; i < Track::maxInsertsPerSection; ++i)
-        {
-            addAndMakeVisible (pluginSlots.add (new InsertSlot (host, track, Section::plugins, i)));
-            addAndMakeVisible (effectSlots.add (new InsertSlot (host, track, Section::effects, i)));
-        }
+        setSlotCounts (insertSlotsFor (track, Section::plugins), insertSlotsFor (track, Section::effects));
 
         pan.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         pan.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
@@ -322,6 +336,21 @@ public:
     }
 
     Track& getTrack() { return track; }
+
+    // Huecos de plugins/efectos. Todos los canales usan los mismos para que los faders queden alineados
+    // (MainComponent pone el máximo que necesite cualquier canal).
+    int neededSlots (Section s) { return insertSlotsFor (track, s); }
+    void setSlotCounts (int numPlugins, int numEffects)
+    {
+        if (numPlugins == pluginSlots.size() && numEffects == effectSlots.size())
+            return;
+        pluginSlots.clear();
+        effectSlots.clear();
+        for (int i = 0; i < numPlugins; ++i) addAndMakeVisible (pluginSlots.add (new InsertSlot (host, track, Section::plugins, i)));
+        for (int i = 0; i < numEffects; ++i) addAndMakeVisible (effectSlots.add (new InsertSlot (host, track, Section::effects, i)));
+        resized();
+        repaint();
+    }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
@@ -533,6 +562,20 @@ public:
     void refresh()
     {
         for (auto* s : strips) s->refresh();
+    }
+
+    // Huecos de inserción comunes a todos los canales (el mayor que necesite alguno)
+    void getNeededSlots (int& numPlugins, int& numEffects) const
+    {
+        for (auto* s : strips)
+        {
+            numPlugins = juce::jmax (numPlugins, s->neededSlots (Section::plugins));
+            numEffects = juce::jmax (numEffects, s->neededSlots (Section::effects));
+        }
+    }
+    void setSlotCounts (int numPlugins, int numEffects)
+    {
+        for (auto* s : strips) s->setSlotCounts (numPlugins, numEffects);
     }
 
     void setTracks (const juce::Array<Track*>& tracks, const juce::Array<std::pair<int, Track*>>& buses = {})

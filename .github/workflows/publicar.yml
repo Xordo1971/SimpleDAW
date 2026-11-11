@@ -2,6 +2,7 @@
 #
 # Cómo se usa:
 #   1. Sube la versión en CMakeLists.txt:   project(SimpleDAW VERSION 1.4.0)
+#      y escribe sus novedades en CHANGELOG.md (apartado "## 1.4.0")
 #   2. Crea y sube la etiqueta:             git tag v1.4.0   y   git push origin v1.4.0
 #   3. En unos 15-20 minutos aparece en la pestaña "Releases" del repositorio, con el DMG y el ZIP.
 #      Las copias de SimpleDAW instaladas lo detectan solas y ofrecen actualizarse.
@@ -93,14 +94,20 @@ jobs:
     needs: [ version, mac, windows ]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+      - name: Novedades (apartado de esta versión en CHANGELOG.md)
+        run: |
+          awk -v v="${{ needs.version.outputs.version }}" '/^## /{p = ($2 == v); next} p' CHANGELOG.md > notas.md
+          if [ ! -s notas.md ]; then echo "Sin novedades escritas para esta versión." > notas.md; fi
+          cat notas.md
       - name: Publicar la versión
         uses: softprops/action-gh-release@v2
         with:
           name: SimpleDAW ${{ needs.version.outputs.version }}
-          generate_release_notes: true
+          body_path: notas.md
           files: |
             SimpleDAW-*-mac.dmg
             SimpleDAW-*-windows.zip
