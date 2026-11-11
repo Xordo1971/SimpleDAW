@@ -4,6 +4,7 @@
 #include "AudioEngine.h"
 #include <algorithm>
 #include "Theme.h"
+#include "Dialogs.h"
 
 // Zoom y desplazamiento horizontal, compartidos por la regla y todas las pistas
 struct Timeline
@@ -388,7 +389,7 @@ private:
             }
             else if (r == 2)
             {
-                auto* aw = new juce::AlertWindow ("Nombre del marcador", {}, juce::MessageBoxIconType::NoIcon);
+                auto* aw = new Dialogs::Window ("Nombre del marcador", {}, juce::MessageBoxIconType::NoIcon);
                 aw->addTextEditor ("name", it->name);
                 aw->addButton ("Aceptar", 1, juce::KeyPress (juce::KeyPress::returnKey));
                 aw->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));

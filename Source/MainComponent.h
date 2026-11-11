@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "AppPaths.h"
+#include "Dialogs.h"
 #include "AudioEngine.h"
 #include "Effects.h"
 #include "Theme.h"

@@ -3,6 +3,18 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.6.2
+
+- Barra superior: los botones de ir al principio, parar, reproducir, grabar y ciclo pasan a la izquierda de la pantalla de tiempo; a su derecha quedan solo el metrónomo y el afinador.
+- Ventanas emergentes nuevas: marco gris oscuro, título grande y el texto en una caja más clara con deslizadores si no cabe (avisos, nueva versión, novedades...).
+- Toda la aplicación usa la tipografía Avenir Next (normal y negrita). En Windows, si no está instalada, se usa la de siempre.
+- Incluye el arreglo de la 1.6.1: en Mac la actualización automática ya se instala sola. Si tienes la 1.6.0 o anterior, esta versión hay que instalarla a mano una vez (descargando el DMG).
+
+## 1.6.1
+
+- Arreglada de verdad la actualización automática en Mac: el instalador se guardaba con un formato de texto que el Mac no entendía y no llegaba a arrancar.
+- Importante: desde la 1.6.0 o anteriores esta actualización hay que instalarla a mano una vez (descargando el DMG). A partir de la 1.6.1 las siguientes ya se instalarán solas.
+
 ## 1.6.0
 - La ventana se abre más grande (1810 x 1035, o lo que quepa en la pantalla).
 - Barra superior nueva: los botones van solo con icono y a la izquierda (pista, mezclador, audio, plugins,

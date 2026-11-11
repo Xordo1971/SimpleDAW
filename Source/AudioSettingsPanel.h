@@ -2,6 +2,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "Text.h"
 #include "Theme.h"
+#include "Dialogs.h"
 #include "AudioEngine.h"
 
 // Ajustes de audio: dispositivos (de JUCE) + compensación de latencia de grabación
@@ -111,7 +112,7 @@ private:
     {
         if (engine.getState() != AudioEngine::stopped || measureInput.getNumItems() == 0)
             return;
-        auto* aw = new juce::AlertWindow (tr8 ("Medir la latencia"),
+        auto* aw = new Dialogs::Window (tr8 ("Medir la latencia"),
             tr8 ("1. Conecta con un cable la salida 1 de la interfaz a la entrada elegida (y quita la guitarra).\n"
                  "2. Baja el volumen de los monitores y auriculares: sonará un clic fuerte.\n"
                  "3. Pulsa \"Medir\"."), juce::MessageBoxIconType::InfoIcon);
@@ -142,13 +143,13 @@ private:
             const int measured = engine.getMeasuredLatency();
             if (measured < 0)
             {
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Medir la latencia"),
+                Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Medir la latencia"),
                     tr8 ("No se ha detectado el clic. Comprueba el cable, la entrada elegida y que la ganancia de esa entrada no esté al mínimo."));
                 return;
             }
             const double ms = (measured - engine.getReportedLatency()) * 1000.0 / rate();
             manual.setValue (juce::jlimit (-50.0, 100.0, std::round (ms * 10.0) / 10.0));
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, tr8 ("Medir la latencia"),
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, tr8 ("Medir la latencia"),
                 tr8 ("Latencia medida: ") + juce::String (measured * 1000.0 / rate(), 1) + tr8 (" ms. Ajuste aplicado."));
         }
     }

@@ -4,6 +4,7 @@
 // Se incluye desde Effects.h (solo en la aplicación, no en las pruebas).
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Theme.h"
+#include "Dialogs.h"
 #include "Presets.h"
 #if SIMPLEDAW_HAS_BINARYDATA
  #include "BinaryData.h"
@@ -344,7 +345,7 @@ private:
     {
         if (! Presets::isValid (preset))
         {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Preset",
+            Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Preset",
                 tr8 ("Este archivo no es un preset válido de SimpleDAW."));
             return;
         }
@@ -360,7 +361,7 @@ private:
         updatePresetName();
         repaint();
         if (skipped > 0)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Preset",
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Preset",
                 juce::String (skipped) + tr8 (" efecto(s) del preset no se han añadido: no se reconocen."));
     }
 
@@ -422,7 +423,7 @@ private:
 
     void savePreset()
     {
-        auto* aw = new juce::AlertWindow ("Guardar preset", tr8 ("Nombre del preset:"), juce::MessageBoxIconType::NoIcon);
+        auto* aw = new Dialogs::Window ("Guardar preset", tr8 ("Nombre del preset:"), juce::MessageBoxIconType::NoIcon);
         juce::String current;
         if (auto* a = dynamic_cast<AmpEffect*> (&processor)) current = a->presetName;
         aw->addTextEditor ("name", current.isNotEmpty() ? current : juce::String ("Mi sonido"));
@@ -461,7 +462,7 @@ private:
         const auto file = Presets::fileForName (name);
         if (x == nullptr || ! x->writeTo (file))
         {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Preset", tr8 ("No se ha podido guardar el preset."));
+            Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Preset", tr8 ("No se ha podido guardar el preset."));
             return;
         }
         if (auto* a = dynamic_cast<AmpEffect*> (&processor)) a->presetName = name;
@@ -493,7 +494,7 @@ private:
 
     void deletePreset (const juce::File& f)
     {
-        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "Borrar preset",
+        Dialogs::okCancel (juce::MessageBoxIconType::QuestionIcon, "Borrar preset",
             tr8 ("¿Borrar el preset \"") + f.getFileNameWithoutExtension() + "\"?", "Borrar", "Cancelar", nullptr,
             juce::ModalCallbackFunction::create ([f] (int r) { if (r == 1) f.moveToTrash(); }));
     }

@@ -3,6 +3,7 @@
 #include "Text.h"
 #include "AudioEngine.h"
 #include "Theme.h"
+#include "Dialogs.h"
 #include "Timeline.h"
 #include "MixerComponent.h"
 #include "Transpose.h"
@@ -977,7 +978,7 @@ private:
 
         if (newClip->getLength() <= 0)
         {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Editor",
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Editor",
                 tr8 ("No se puede dejar la región vacía. Para quitarla entera, selecciónala en la pista y pulsa Supr."));
             return false;
         }

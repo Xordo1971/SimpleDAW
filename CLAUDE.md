@@ -23,6 +23,10 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
 - `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1537x649; los mandos se dibujan girando
   la propia foto; coordenadas en píxeles de la imagen). Franja inferior: presets, pantalla, puerta de ruido.
+- `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
+  amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
+- Tipografía: Avenir Next en toda la app (`SimpleDAWLookAndFeel::getTypefaceForFont`; en Windows, la de siempre si no está).
+  Los contadores de la pantalla usan `Theme::drawFixedDigits` para que las cifras no bailen.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).
 - `ResourceMeter.h` (CPU/RAM), `Updater.h` (actualizaciones desde GitHub Releases; al arrancar avisa y,
   tras actualizar, enseña las novedades del CHANGELOG.md incluido en la app), `Drums.h`/`DrumEditor.h`,

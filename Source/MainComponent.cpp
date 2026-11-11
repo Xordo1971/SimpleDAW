@@ -305,7 +305,7 @@ void MainComponent::toggleRecord()
     }
 
     if (engine.startRecording (AppPaths::recordingsFolder()) == 0)
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Nada que grabar",
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Nada que grabar",
             tr8 ("Arma al menos una pista (botón R) que tenga una entrada seleccionada."));
 }
 
@@ -334,7 +334,7 @@ void MainComponent::stopTransport()
     }
 
     if (wasRecording && engine.takeLostSamples())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Se han perdido muestras"),
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Se han perdido muestras"),
             tr8 ("El disco no ha podido guardar la grabación a tiempo y la toma puede tener cortes. "
                  "Cierra otros programas que usen mucho el disco, o graba en un disco más rápido."));
 
@@ -346,7 +346,7 @@ void MainComponent::stopTransport()
             if (PeakReadout::isClip (peak) && componentFor (t) != nullptr)
                 clipped.add ("\"" + t->name + "\"");
         if (! clipped.isEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("La grabación ha saturado"),
+            Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("La grabación ha saturado"),
                 tr8 ("La toma de ") + clipped.joinIntoString (", ")
                 + tr8 (" ha llegado a 0 dBFS (CLIP), así que puede sonar distorsionada.\n\n"
                        "Baja la ganancia de entrada en tu interfaz de audio y vuelve a grabar. "
@@ -458,7 +458,7 @@ void MainComponent::timerCallback()
                         if (ins->processor.get() == p)
                             fx = juce::String (tr8 ("«")) + p->getName() + tr8 ("»");
             }
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Efecto desactivado"),
+            Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Efecto desactivado"),
                 tr8 ("El efecto ") + fx + tr8 (" de ") + where
                 + tr8 (" ha generado una señal descontrolada. Se ha silenciado y desactivado para proteger tus oídos y altavoces.\n\n"
                        "Puedes volver a activarlo en su ranura. Si vuelve a pasar, cuéntaselo a Claude con este mensaje."));
@@ -658,9 +658,9 @@ void MainComponent::resized()
     logoArea = toolbar.removeFromLeft (ChannelStrip::stripWidth - 10);
     toolbar.removeFromLeft (14);
 
-    // Izquierda: pista, mezclador, audio, plugins, importar, editor y afinador (solo iconos)
+    // Izquierda: pista, mezclador, audio, plugins, importar y editor (solo iconos)
     const int ib = 44, igap = 6;
-    for (auto* b : { &addTrackButton, &mixerButton, &audioButton, &pluginsButton, &importButton, &editorButton, &tunerButton })
+    for (auto* b : { &addTrackButton, &mixerButton, &audioButton, &pluginsButton, &importButton, &editorButton })
     {
         b->setBounds (toolbar.removeFromLeft (ib));
         toolbar.removeFromLeft (igap);
@@ -670,20 +670,38 @@ void MainComponent::resized()
     resourceMeter.setBounds (toolbar.removeFromRight (150).withSizeKeepingCentre (150, 34));
     toolbar.removeFromRight (14);
 
-    // Pantalla (posición, tiempo, tempo, compás) centrada exactamente en la ventana,
-    // y a su derecha el transporte, el ciclo y el metrónomo
-    const int bw = 44, gap = 4, transportW = 6 * bw + 5 * gap;
+    // Pantalla (posición, tiempo, tempo, compás) centrada exactamente en la ventana; a su izquierda
+    // el transporte y el ciclo, y a su derecha el metrónomo y el afinador.
+    // Si la ventana es tan estrecha que no puede ir centrada, se arrima lo justo a la derecha.
+    const int bw = 44, gap = 4, sideGap = 14;
+    const int transportW = 5 * bw + 4 * gap, rightW = 2 * bw + gap;
     const int centreX = getWidth() / 2;
-    const int lcdW = juce::jlimit (240, 390, juce::jmin (2 * (centreX - toolbar.getX()),
-                                                         2 * (toolbar.getRight() - transportW - 14 - centreX)));
-    lcd.setBounds (juce::Rectangle<int> (centreX - lcdW / 2, toolbar.getY(), lcdW, toolbar.getHeight()));
-    auto group = toolbar.withLeft (lcd.getRight() + 14).withWidth (transportW);
+    const int leftLimit = toolbar.getX() + transportW + sideGap;
+    const int rightLimit = toolbar.getRight() - rightW - sideGap;
+    const int centredW = juce::jmin (2 * (centreX - leftLimit), 2 * (rightLimit - centreX));
+    int lcdW, lcdX;
+    if (centredW >= 240)
+    {
+        lcdW = juce::jmin (390, centredW);
+        lcdX = centreX - lcdW / 2;
+    }
+    else
+    {
+        lcdW = juce::jlimit (240, 390, rightLimit - leftLimit);
+        lcdX = leftLimit;
+    }
+    lcd.setBounds (lcdX, toolbar.getY(), lcdW, toolbar.getHeight());
+
+    auto group = toolbar.withLeft (lcd.getX() - sideGap - transportW).withWidth (transportW);
     toStartButton.setBounds   (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     stopButton.setBounds      (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     playButton.setBounds      (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     recordButton.setBounds    (group.removeFromLeft (bw)); group.removeFromLeft (gap);
-    cycleButton.setBounds     (group.removeFromLeft (bw)); group.removeFromLeft (gap);
-    metronomeButton.setBounds (group.removeFromLeft (bw));
+    cycleButton.setBounds     (group.removeFromLeft (bw));
+
+    auto right = toolbar.withLeft (lcd.getRight() + sideGap).withWidth (rightW);
+    metronomeButton.setBounds (right.removeFromLeft (bw)); right.removeFromLeft (gap);
+    tunerButton.setBounds     (right.removeFromLeft (bw));
 
     masterStrip->setBounds (area.removeFromLeft (ChannelStrip::stripWidth));
     area.removeFromLeft (3);
@@ -797,7 +815,7 @@ void MainComponent::showPluginManager()
     o.launchAsync();
 
     if (knownPlugins.getNumTypes() == 0)
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Buscar plugins",
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Buscar plugins",
             tr8 ("Pulsa \"Opciones / buscar...\" y elige \"Buscar nuevos plugins\" para cada formato. "
                  "SimpleDAW encontrará los plugins instalados (AmpliTube, Guitar Rig, etc.).\n\n"
                  "La búsqueda puede tardar unos minutos la primera vez."));
@@ -874,7 +892,7 @@ void MainComponent::loadExternalPlugin (Track& track, int slot, const juce::Plug
 
             if (instance == nullptr)
             {
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "No se pudo cargar el plugin",
+                Dialogs::show (juce::MessageBoxIconType::WarningIcon, "No se pudo cargar el plugin",
                                                         desc.name + ":\n" + error);
                 return;
             }
@@ -1226,7 +1244,7 @@ void MainComponent::importFiles (const juce::StringArray& files, Track* target, 
 
     if (valid.isEmpty())
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Importar audio",
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Importar audio",
                                                 tr8 ("Ese formato no se puede importar. Usa wav, aiff, mp3, flac u ogg."));
         return;
     }
@@ -1238,7 +1256,7 @@ void MainComponent::importFiles (const juce::StringArray& files, Track* target, 
     }
 
     // Archivo estéreo: preguntar cómo importarlo
-    auto* aw = new juce::AlertWindow (tr8 ("Importar audio"),
+    auto* aw = new Dialogs::Window (tr8 ("Importar audio"),
                                       valid.size() == 1 ? tr8 ("\"") + juce::File (valid[0]).getFileName() + tr8 ("\" es estéreo. ¿Cómo quieres importarlo?")
                                                         : tr8 ("Algunos archivos son estéreo. ¿Cómo quieres importarlos?"),
                                       juce::MessageBoxIconType::QuestionIcon);
@@ -1304,7 +1322,7 @@ void MainComponent::doImport (const juce::StringArray& files, Track* target, juc
     regionsChanged();
 
     if (! errors.isEmpty())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("No se pudo importar"),
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("No se pudo importar"),
                                                 errors.joinIntoString ("\n"));
 }
 
@@ -1612,7 +1630,7 @@ bool MainComponent::writeProject (const juce::File& file)
 
     if (! errors.isEmpty())
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Error al guardar"),
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Error al guardar"),
                                                 errors.joinIntoString ("\n"));
         return false;
     }
@@ -1725,7 +1743,7 @@ void MainComponent::loadProject (const juce::File& file, bool isRecovery)
     auto xml = juce::XmlDocument::parse (file);
     if (xml == nullptr || ! xml->hasTagName ("SIMPLEDAW_PROJECT"))
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Abrir proyecto",
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Abrir proyecto",
                                                 tr8 ("Ese archivo no es un proyecto de SimpleDAW o está dañado."));
         return;
     }
@@ -1858,7 +1876,7 @@ void MainComponent::loadProject (const juce::File& file, bool isRecovery)
     updateWindowTitle();
 
     if (! warnings.isEmpty())
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Proyecto abierto con avisos"),
+        Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Proyecto abierto con avisos"),
                                                 warnings.joinIntoString ("\n"));
 }
 
@@ -1919,7 +1937,7 @@ void MainComponent::askToSaveThen (std::function<void()> action)
     }
 
     const auto name = projectFile != juce::File() ? projectFile.getFileNameWithoutExtension() : tr8 ("Sin título");
-    auto* aw = new juce::AlertWindow (tr8 ("¿Guardar los cambios?"),
+    auto* aw = new Dialogs::Window (tr8 ("¿Guardar los cambios?"),
                                       tr8 ("El proyecto \"") + name + tr8 ("\" tiene cambios sin guardar."),
                                       juce::MessageBoxIconType::QuestionIcon);
     aw->addButton ("Guardar", 1, juce::KeyPress (juce::KeyPress::returnKey));
@@ -2044,7 +2062,7 @@ void MainComponent::exportMix()
 
     if (engine.getContentEndSamples() == 0)
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Exportar mezcla",
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Exportar mezcla",
                                                 tr8 ("No hay nada que exportar: graba o importa audio primero."));
         return;
     }
@@ -2133,7 +2151,7 @@ void MainComponent::startExport (const juce::File& target, ExportSettings settin
 
             if (! ok)
             {
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("No se pudo exportar"),
+                Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("No se pudo exportar"),
                                                         error.isNotEmpty() ? error : tr8 ("Error al escribir el archivo."));
                 return;
             }
@@ -2143,7 +2161,7 @@ void MainComponent::startExport (const juce::File& target, ExportSettings settin
                 msg << tr8 ("\n\nAviso: satura (pico de +") << juce::String (juce::Decibels::gainToDecibels (peak), 1)
                     << " dB) en: " << clipped.joinIntoString (", ")
                     << tr8 (". Baja el volumen (o el Master) y vuelve a exportar.");
-            juce::AlertWindow::showMessageBoxAsync (clipped.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
+            Dialogs::show (clipped.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
                                                     "Exportar", msg);
             target.revealToUser();
         });
@@ -2583,7 +2601,7 @@ void MainComponent::showAddBusMenu (juce::Component& target)
         const int slot = self->createBus (effect.isNotEmpty() ? effect : juce::String ("Bus"), effect);
         if (slot < 0)
         {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Buses", tr8 ("Como máximo puede haber 8 buses."));
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Buses", tr8 ("Como máximo puede haber 8 buses."));
             return;
         }
         auto holder = std::make_shared<std::unique_ptr<Track>>();
@@ -2615,7 +2633,7 @@ void MainComponent::showBusMenu (Track& bus, juce::Component& target)
 
         if (r == 1)
         {
-            auto* aw = new juce::AlertWindow ("Nombre del bus", {}, juce::MessageBoxIconType::NoIcon);
+            auto* aw = new Dialogs::Window ("Nombre del bus", {}, juce::MessageBoxIconType::NoIcon);
             aw->addTextEditor ("name", bus->name);
             aw->addButton ("Aceptar", 1, juce::KeyPress (juce::KeyPress::returnKey));
             aw->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -2715,7 +2733,7 @@ void MainComponent::checkForRecovery()
     if (! file.existsAsFile())
         return;
 
-    auto* aw = new juce::AlertWindow (tr8 ("Recuperar la sesión"),
+    auto* aw = new Dialogs::Window (tr8 ("Recuperar la sesión"),
         tr8 ("SimpleDAW no se cerró correctamente la última vez. ¿Quieres recuperar la sesión autoguardada "
              "(de ") + file.getLastModificationTime().formatted ("%d/%m %H:%M") + ")?",
         juce::MessageBoxIconType::QuestionIcon);
@@ -2740,7 +2758,7 @@ void MainComponent::checkForUpdates (bool askedByUser)
     if (Updater::repository().isEmpty())
     {
         if (askedByUser)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
                 tr8 ("Esta copia de SimpleDAW no está enlazada con un repositorio de GitHub.\n\n"
                      "Las actualizaciones automáticas funcionan en las versiones descargadas de la página "
                      "\"Releases\" del repositorio (o compiladas desde una copia clonada de él)."));
@@ -2749,7 +2767,7 @@ void MainComponent::checkForUpdates (bool askedByUser)
     if (updateWaiting)
     {
         if (askedByUser)
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
+            Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
                 tr8 ("La actualización ya está descargada: se instalará al cerrar SimpleDAW."));
         return;
     }
@@ -2767,7 +2785,7 @@ void MainComponent::checkForUpdates (bool askedByUser)
             if (! ok)
             {
                 if (askedByUser)
-                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Actualizaciones",
+                    Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Actualizaciones",
                                                             tr8 ("No se ha podido comprobar si hay versiones nuevas.\n") + error);
                 return;
             }
@@ -2775,7 +2793,7 @@ void MainComponent::checkForUpdates (bool askedByUser)
             if (! newer || (! askedByUser && release.version == self->skippedVersion))
             {
                 if (askedByUser)
-                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
+                    Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Actualizaciones",
                         tr8 ("Tienes la última versión (") + Updater::currentVersion() + ").");
                 return;
             }
@@ -2786,18 +2804,15 @@ void MainComponent::checkForUpdates (bool askedByUser)
 
 void MainComponent::offerUpdate (const Updater::Release& release)
 {
-    auto notes = release.notes.trim();
-    if (notes.length() > 700)
-        notes = notes.substring (0, 700) + "...";
+    const auto notes = release.notes.trim();   // va entera en la caja: si no cabe, se desplaza
 
     juce::String text = tr8 ("Tienes la ") + Updater::currentVersion() + tr8 (". ¿Quieres descargar la nueva e instalarla?\n"
                         "Se instalará sola al cerrar SimpleDAW (antes te pregunta si quieres guardar).");
-    if (notes.isNotEmpty())
-        text << "\n\n" << tr8 ("Novedades:\n") << notes;
     if (release.assetUrl.isEmpty())
         text << "\n\n" << tr8 ("(Todavía no hay archivo para este sistema en esa versión: se abrirá la página.)");
 
-    auto* aw = new juce::AlertWindow (tr8 ("Nueva versión: SimpleDAW ") + release.version, text, juce::MessageBoxIconType::InfoIcon);
+    auto* aw = new Dialogs::Window (tr8 ("Nueva versión: SimpleDAW ") + release.version, text, juce::MessageBoxIconType::InfoIcon,
+                                     "CHANGELOG", notes);
     aw->addButton ("Actualizar", 1, juce::KeyPress (juce::KeyPress::returnKey));
     aw->addButton (tr8 ("Más tarde"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
     aw->addButton (tr8 ("Saltar esta versión"), 2);
@@ -2824,13 +2839,13 @@ void MainComponent::offerUpdate (const Updater::Release& release)
                 return;
             if (! Updater::scheduleInstall (package))
             {
-                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Actualización"),
+                Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Actualización"),
                     tr8 ("No se ha podido preparar la instalación automática. Se abre la carpeta con la descarga para instalarla a mano."));
                 package.revealToUser();
                 return;
             }
             self->updateWaiting = true;
-            auto* done = new juce::AlertWindow (tr8 ("Actualización lista"),
+            auto* done = new Dialogs::Window (tr8 ("Actualización lista"),
                 tr8 ("Se instalará al cerrar SimpleDAW y se volverá a abrir sola.\n¿Cerrar ahora?"), juce::MessageBoxIconType::InfoIcon);
             done->addButton ("Cerrar y actualizar", 1, juce::KeyPress (juce::KeyPress::returnKey));
             done->addButton (tr8 ("Más tarde"), 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -2887,8 +2902,10 @@ void MainComponent::showWhatsNewIfUpdated()
     if (notes.isEmpty())
         return;
 
-    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
-        tr8 ("SimpleDAW se ha actualizado a la ") + Updater::currentVersion(), tr8 ("Novedades:\n\n") + notes);
+    auto* w = new Dialogs::Window (tr8 ("SimpleDAW se ha actualizado a la versión ") + Updater::currentVersion() + ".", {},
+                                   juce::MessageBoxIconType::InfoIcon, "CHANGELOG", notes);
+    w->addButton ("OK", 0, juce::KeyPress (juce::KeyPress::returnKey), juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, nullptr, true);
 }
 
 void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
@@ -2905,6 +2922,31 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
             png.writeImageToStream (createComponentSnapshot (getLocalBounds(), true, 1.0f), out);
         }
     };
+    // Ventanas emergentes (se dibujan sin enseñarlas): las novedades, largas, y un aviso corto
+    {
+        auto saveDialog = [folder] (Dialogs::Window& w, const juce::String& name)
+        {
+            juce::PNGImageFormat png;
+            juce::FileOutputStream out (folder.getChildFile (name));
+            if (out.openedOk())
+            {
+                out.setPosition (0);
+                out.truncate();
+                png.writeImageToStream (w.createComponentSnapshot (w.getLocalBounds(), true, 1.0f), out);
+            }
+        };
+        Dialogs::Window news (tr8 ("SimpleDAW se ha actualizado a la versión ") + Updater::currentVersion() + ".", {},
+                              juce::MessageBoxIconType::InfoIcon, "CHANGELOG", changelogSince ("1.4.0"));
+        news.addButton ("OK", 0);
+        saveDialog (news, "5-novedades.png");
+        Dialogs::Window ask (tr8 ("¿Guardar los cambios?"), tr8 ("El proyecto \"Sin título\" tiene cambios sin guardar."),
+                             juce::MessageBoxIconType::QuestionIcon);
+        ask.addButton ("Guardar", 1);
+        ask.addButton ("No guardar", 2);
+        ask.addButton ("Cancelar", 0);
+        saveDialog (ask, "6-aviso.png");
+    }
+
     const bool labels = showButtonLabels;
     save ("1-barra.png");
     if (! labels) labelsToggle.triggerClick();

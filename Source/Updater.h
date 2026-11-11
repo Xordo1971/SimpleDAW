@@ -6,6 +6,7 @@
 // El repositorio (usuario/nombre) lo pone CMake: SIMPLEDAW_GITHUB_REPO.
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "AppPaths.h"
+#include "Dialogs.h"
 #include "Text.h"
 #include <array>
 #include <cstdlib>
@@ -151,7 +152,7 @@ namespace Updater
             {
                 target.deleteFile();
                 if (! cancelled)
-                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, tr8 ("Actualización"),
+                    Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Actualización"),
                                                             tr8 ("No se ha podido descargar la actualización. Inténtalo más tarde."));
             }
             else if (onDone)
@@ -205,7 +206,7 @@ fi
 # Plan B: se abre el DMG para arrastrar la app a mano
 echo "plan B: se abre el DMG"
 open "$DMG"
-)SH");
+)SH", false, false, "\n");   // saltos de linea Unix: con "\r\n" (lo que pone JUCE por defecto) sh falla
 
         // Se lanza en una sesión propia (setsid): si fuera hijo normal de SimpleDAW, macOS lo
         // mataría junto con la app al cerrarse, y la actualización no se instalaría nunca.
