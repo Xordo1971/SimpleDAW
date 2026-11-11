@@ -46,6 +46,29 @@ namespace Theme
         g.setColour (juce::Colours::white.withAlpha (0.05f));
         g.drawHorizontalLine ((int) r.getBottom() - 1, r.getX() + radius, r.getRight() - radius);
     }
+    // Icono de zoom junto a un regulador: flecha doble horizontal (tiempo) o vertical (altura)
+    inline void drawZoomIcon (juce::Graphics& g, juce::Rectangle<int> area, bool vertical)
+    {
+        if (area.isEmpty())
+            return;
+        const auto c = area.toFloat().getCentre();
+        const float l = 6.0f, a = 3.0f;
+        juce::Path p;
+        if (vertical)
+        {
+            p.startNewSubPath (c.x, c.y - l); p.lineTo (c.x, c.y + l);
+            p.startNewSubPath (c.x - a, c.y - l + a); p.lineTo (c.x, c.y - l); p.lineTo (c.x + a, c.y - l + a);
+            p.startNewSubPath (c.x - a, c.y + l - a); p.lineTo (c.x, c.y + l); p.lineTo (c.x + a, c.y + l - a);
+        }
+        else
+        {
+            p.startNewSubPath (c.x - l, c.y); p.lineTo (c.x + l, c.y);
+            p.startNewSubPath (c.x - l + a, c.y - a); p.lineTo (c.x - l, c.y); p.lineTo (c.x - l + a, c.y + a);
+            p.startNewSubPath (c.x + l - a, c.y - a); p.lineTo (c.x + l, c.y); p.lineTo (c.x + l - a, c.y + a);
+        }
+        g.setColour (textDim);
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+    }
 }
 
 // Indicador de pico máximo en dB: "-inf", "-12.3", "CLIP" (rojo si se llega a 0 dBFS o más)

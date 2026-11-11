@@ -4,8 +4,11 @@
 
 namespace
 {
-    constexpr int rowHeight = 84;
-    constexpr int toolbarHeight = 64;
+    constexpr int minTrackHeight = 84, maxTrackHeight = 260;
+    constexpr int toolbarHeight = 64;   // botones
+    constexpr int labelsHeight = 10;    // nombres bajo los botones (si están desplegados)
+    constexpr int toggleHeight = 9;     // franja plegable
+    constexpr double minPixelsPerSecond = 5.0, maxPixelsPerSecond = 2000.0;
     constexpr int statusHeight = 24;
 }
 
@@ -47,14 +50,40 @@ MainComponent::MainComponent()
     setupButton (zoomOutButton,  [this] { zoom (1.0 / 1.5); },    "Alejar");
     setupButton (zoomInButton,   [this] { zoom (1.5); },          "Acercar");
 
-    addTrackButton.setIconLabel ("Pista");
-    audioButton.setIconLabel ("Audio");
-    mixerButton.setIconLabel ("Mezclador");
-    tunerButton.setIconLabel ("Afinador");
-    audioButton.setIconLabel ({});     // solo icono (el texto está en la ayuda)
-    pluginsButton.setIconLabel ({});
-    importButton.setIconLabel ({});
-    editorButton.setIconLabel ("Editor");
+    // Botones solo con icono; el nombre sale debajo si se despliega la franja inferior de la barra
+    for (auto* b : { &addTrackButton, &audioButton, &mixerButton, &tunerButton, &pluginsButton, &importButton, &editorButton })
+        b->setIconLabel ({});
+    labelsToggle.setTooltip ("Mostrar u ocultar el nombre de los botones");
+    labelsToggle.onClick = [this]
+    {
+        showButtonLabels = ! showButtonLabels;
+        labelsToggle.expanded = showButtonLabels;
+        saveAppSettings();
+        resized();
+    };
+    addAndMakeVisible (labelsToggle);
+
+    // Zoom de las pistas: regulador a lo ancho (tiempo) y a lo alto (altura de pista)
+    for (auto* s : { &hZoomSlider, &vZoomSlider })
+    {
+        s->setSliderStyle (juce::Slider::LinearHorizontal);
+        s->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        s->setWantsKeyboardFocus (false);
+        addAndMakeVisible (s);
+    }
+    hZoomSlider.setRange (minPixelsPerSecond, maxPixelsPerSecond);
+    hZoomSlider.setSkewFactorFromMidPoint (100.0);
+    hZoomSlider.setTooltip ("Zoom horizontal de las pistas (tiempo)");
+    hZoomSlider.onValueChange = [this]
+    {
+        timeline.pixelsPerSecond = hZoomSlider.getValue();
+        updateScrollBar();
+        repaintTimeline();
+    };
+    vZoomSlider.setRange (minTrackHeight, maxTrackHeight, 1.0);
+    vZoomSlider.setTooltip ("Zoom vertical: altura de las pistas");
+    vZoomSlider.onValueChange = [this] { setTrackHeight ((int) vZoomSlider.getValue()); };
+    syncZoomSliders();
 
     // Editor de audio (panel inferior, oculto al principio)
     audioEditor = std::make_unique<AudioEditor> (*this, engine);
@@ -124,7 +153,7 @@ MainComponent::MainComponent()
     logo = Brand::loadImage ("logoapp_png");
 
     addTrack();
-    setSize (1440, 820);
+    setSize (1810, 1035);   // tamaño inicial (Main.cpp lo ajusta si la pantalla es más pequeña)
     markSaved();
     syncChangeWatcher();
     startTimerHz (30);
@@ -230,10 +259,31 @@ void MainComponent::removeTrack (TrackComponent& c)
 void MainComponent::layoutTracks()
 {
     const int width = viewport.getMaximumVisibleWidth();
-    trackContainer.setSize (width, rowHeight * trackComponents.size());
+    trackContainer.setSize (width, trackHeight * trackComponents.size());
 
     for (int i = 0; i < trackComponents.size(); ++i)
-        trackComponents[i]->setBounds (0, i * rowHeight, width, rowHeight);
+        trackComponents[i]->setBounds (0, i * trackHeight, width, trackHeight);
+}
+
+int MainComponent::toolbarTotalHeight() const
+{
+    return toolbarHeight + (showButtonLabels ? labelsHeight : 0) + toggleHeight;
+}
+
+void MainComponent::setTrackHeight (int h)
+{
+    h = juce::jlimit (minTrackHeight, maxTrackHeight, h);
+    if (h == trackHeight)
+        return;
+    trackHeight = h;
+    layoutTracks();
+    syncZoomSliders();
+}
+
+void MainComponent::syncZoomSliders()
+{
+    hZoomSlider.setValue (timeline.pixelsPerSecond, juce::dontSendNotification);
+    vZoomSlider.setValue (trackHeight, juce::dontSendNotification);
 }
 
 // ===================== Transporte =====================
@@ -318,7 +368,8 @@ void MainComponent::goToStart()
 
 void MainComponent::zoom (double factor)
 {
-    timeline.pixelsPerSecond = juce::jlimit (5.0, 2000.0, timeline.pixelsPerSecond * factor);
+    timeline.pixelsPerSecond = juce::jlimit (minPixelsPerSecond, maxPixelsPerSecond, timeline.pixelsPerSecond * factor);
+    syncZoomSliders();
     updateScrollBar();
     repaintTimeline();
 }
@@ -516,7 +567,7 @@ void MainComponent::paint (juce::Graphics& g)
     g.fillAll (Theme::background);
 
     // Barra de control superior
-    auto top = getLocalBounds().removeFromTop (toolbarHeight).toFloat();
+    auto top = getLocalBounds().removeFromTop (toolbarTotalHeight() - toggleHeight).toFloat();
     g.setGradientFill (juce::ColourGradient (Theme::panelLight.brighter (0.05f), 0, 0,
                                              Theme::panel.darker (0.1f), 0, top.getBottom(), false));
     g.fillRect (top);
@@ -541,6 +592,25 @@ void MainComponent::paint (juce::Graphics& g)
         g.drawText ("Simple", juce::Rectangle<float> (x, la.getY(), w1 + 2.0f, la.getHeight()), juce::Justification::centredLeft);
         g.setColour (Theme::accent);
         g.drawText ("DAW", juce::Rectangle<float> (x + w1, la.getY(), w2 + 4.0f, la.getHeight()), juce::Justification::centredLeft);
+    }
+
+    Theme::drawZoomIcon (g, vZoomLabelArea, true);   // junto al regulador de altura de pista
+
+    // Nombres bajo los botones (franja desplegada)
+    if (showButtonLabels)
+    {
+        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        g.setColour (Theme::textDim);
+        const std::pair<const juce::Component*, const char*> labels[] = {
+            { &addTrackButton, "Pista" }, { &mixerButton, "Mezclador" }, { &audioButton, "Audio" },
+            { &pluginsButton, "Plugins" }, { &importButton, "Importar" }, { &editorButton, "Editor" },
+            { &tunerButton, "Afinador" } };
+        for (auto& l : labels)
+        {
+            auto b = l.first->getBounds();
+            g.drawText (tr8 (l.second), juce::Rectangle<int> (b.getX() - 8, b.getBottom() + 2, b.getWidth() + 16, 12),
+                        juce::Justification::centredTop);
+        }
     }
 
     // Esquina sobre las cabeceras de pista, a la izquierda de la regla
@@ -578,7 +648,9 @@ void MainComponent::paint (juce::Graphics& g)
 void MainComponent::resized()
 {
     auto area = getLocalBounds();
-    auto toolbar = area.removeFromTop (toolbarHeight).reduced (12, 10);
+    auto bar = area.removeFromTop (toolbarTotalHeight());
+    labelsToggle.setBounds (bar.removeFromBottom (toggleHeight));
+    auto toolbar = bar.withHeight (toolbarHeight).reduced (12, 10);
     auto status = area.removeFromBottom (statusHeight);
     deviceInfo.setBounds (status.reduced (10, 0));
 
@@ -586,36 +658,32 @@ void MainComponent::resized()
     logoArea = toolbar.removeFromLeft (ChannelStrip::stripWidth - 10);
     toolbar.removeFromLeft (14);
 
-    // Izquierda: pistas, mezclador, audio y plugins
-    addTrackButton.setBounds (toolbar.removeFromLeft (84));
-    toolbar.removeFromLeft (6);
-    mixerButton.setBounds (toolbar.removeFromLeft (122));
-    toolbar.removeFromLeft (6);
-    audioButton.setBounds (toolbar.removeFromLeft (40));
-    toolbar.removeFromLeft (6);
-    pluginsButton.setBounds (toolbar.removeFromLeft (40));
+    // Izquierda: pista, mezclador, audio, plugins, importar, editor y afinador (solo iconos)
+    const int ib = 44, igap = 6;
+    for (auto* b : { &addTrackButton, &mixerButton, &audioButton, &pluginsButton, &importButton, &editorButton, &tunerButton })
+    {
+        b->setBounds (toolbar.removeFromLeft (ib));
+        toolbar.removeFromLeft (igap);
+    }
 
-    // Derecha: afinador, editor e importar
-    tunerButton.setBounds (toolbar.removeFromRight (112));
-    toolbar.removeFromRight (6);
-    editorButton.setBounds (toolbar.removeFromRight (92));
-    toolbar.removeFromRight (6);
-    importButton.setBounds (toolbar.removeFromRight (40));
-    toolbar.removeFromRight (10);
+    // Derecha del todo: medidor de CPU y RAM
     resourceMeter.setBounds (toolbar.removeFromRight (150).withSizeKeepingCentre (150, 34));
+    toolbar.removeFromRight (14);
 
-    // Centro: transporte, metrónomo y pantalla
-    const int bw = 44, gap = 4;
-    const int lcdW = juce::jlimit (300, 390, toolbar.getWidth() - (6 * bw + 5 * gap + 12) - 20);
-    const int groupW = 6 * bw + 5 * gap + 12 + lcdW;
-    auto group = toolbar.withSizeKeepingCentre (juce::jmin (groupW, toolbar.getWidth()), toolbar.getHeight());
+    // Pantalla (posición, tiempo, tempo, compás) centrada exactamente en la ventana,
+    // y a su derecha el transporte, el ciclo y el metrónomo
+    const int bw = 44, gap = 4, transportW = 6 * bw + 5 * gap;
+    const int centreX = getWidth() / 2;
+    const int lcdW = juce::jlimit (240, 390, juce::jmin (2 * (centreX - toolbar.getX()),
+                                                         2 * (toolbar.getRight() - transportW - 14 - centreX)));
+    lcd.setBounds (juce::Rectangle<int> (centreX - lcdW / 2, toolbar.getY(), lcdW, toolbar.getHeight()));
+    auto group = toolbar.withLeft (lcd.getRight() + 14).withWidth (transportW);
     toStartButton.setBounds   (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     stopButton.setBounds      (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     playButton.setBounds      (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     recordButton.setBounds    (group.removeFromLeft (bw)); group.removeFromLeft (gap);
     cycleButton.setBounds     (group.removeFromLeft (bw)); group.removeFromLeft (gap);
-    metronomeButton.setBounds (group.removeFromLeft (bw)); group.removeFromLeft (12);
-    lcd.setBounds (group);
+    metronomeButton.setBounds (group.removeFromLeft (bw));
 
     masterStrip->setBounds (area.removeFromLeft (ChannelStrip::stripWidth));
     area.removeFromLeft (3);
@@ -652,9 +720,18 @@ void MainComponent::resized()
     const int laneX = viewport.getX() + Timeline::headerWidth;
     const int laneW = juce::jmax (10, viewport.getMaximumVisibleWidth() - Timeline::headerWidth);
     ruler.setBounds (laneX, rulerRow.getY(), laneW, rulerRow.getHeight());
-    hScroll.setBounds (laneX, scrollRow.getY() + 3, juce::jmax (10, laneW - 64), 12);
-    zoomOutButton.setBounds (laneX + laneW - 58, scrollRow.getY() + 1, 26, 16);
-    zoomInButton.setBounds  (laneX + laneW - 28, scrollRow.getY() + 1, 26, 16);
+    // Fila inferior: barra de desplazamiento, zoom a lo alto y zoom a lo ancho (regulador y botones)
+    auto zoomRow = juce::Rectangle<int> (laneX, scrollRow.getY(), laneW, scrollRow.getHeight());
+    zoomInButton.setBounds  (zoomRow.removeFromRight (26).withSizeKeepingCentre (26, 16));
+    zoomRow.removeFromRight (2);
+    hZoomSlider.setBounds   (zoomRow.removeFromRight (110));
+    zoomRow.removeFromRight (2);
+    zoomOutButton.setBounds (zoomRow.removeFromRight (26).withSizeKeepingCentre (26, 16));
+    zoomRow.removeFromRight (14);
+    vZoomSlider.setBounds   (zoomRow.removeFromRight (80));
+    vZoomLabelArea = zoomRow.removeFromRight (20);
+    zoomRow.removeFromRight (8);
+    hScroll.setBounds (zoomRow.withSizeKeepingCentre (juce::jmax (10, zoomRow.getWidth()), 12));
 
     updateScrollBar();
     repaint();
@@ -2382,6 +2459,8 @@ void MainComponent::loadAppSettings()
         skippedVersion = xml->getStringAttribute ("skipVersion");
         // Sin el dato (ajustes de la 1.4.0 o anterior): se trata como una actualización
         lastRunVersion = xml->getStringAttribute ("lastVersion", "0");
+        showButtonLabels = xml->getBoolAttribute ("buttonLabels", false);
+        labelsToggle.expanded = showButtonLabels;
     }
 }
 
@@ -2392,6 +2471,7 @@ void MainComponent::saveAppSettings()
     xml.setAttribute ("manualLatencyMs", engine.manualLatencySamples.load() * 1000.0 / sr);
     if (skippedVersion.isNotEmpty())
         xml.setAttribute ("skipVersion", skippedVersion);
+    xml.setAttribute ("buttonLabels", showButtonLabels);
     xml.setAttribute ("lastVersion", lastRunVersion.isNotEmpty() ? lastRunVersion : Updater::currentVersion());
     xml.writeTo (AppPaths::appSettings());
 }
@@ -2809,6 +2889,53 @@ void MainComponent::showWhatsNewIfUpdated()
 
     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
         tr8 ("SimpleDAW se ha actualizado a la ") + Updater::currentVersion(), tr8 ("Novedades:\n\n") + notes);
+}
+
+void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
+{
+    folder.createDirectory();
+    auto save = [this, folder] (const juce::String& name)
+    {
+        juce::PNGImageFormat png;
+        juce::FileOutputStream out (folder.getChildFile (name));
+        if (out.openedOk())
+        {
+            out.setPosition (0);
+            out.truncate();
+            png.writeImageToStream (createComponentSnapshot (getLocalBounds(), true, 1.0f), out);
+        }
+    };
+    const bool labels = showButtonLabels;
+    save ("1-barra.png");
+    if (! labels) labelsToggle.triggerClick();
+    juce::Component::SafePointer<MainComponent> self (this);
+    juce::Timer::callAfterDelay (300, [self, save, labels]
+    {
+        if (self == nullptr) return;
+        save ("2-nombres.png");
+        if (! labels) self->labelsToggle.triggerClick();
+
+        // Con SIMPLEDAW_CAPTURA_AUDIO=archivo: se importa y se abre el editor (onda ajustada al hueco)
+        const auto audio = juce::SystemStats::getEnvironmentVariable ("SIMPLEDAW_CAPTURA_AUDIO", {});
+        if (audio.isNotEmpty())
+        {
+            self->doImport ({ audio }, nullptr, 0, true);
+            self->setEditorVisible (true);
+        }
+        juce::Timer::callAfterDelay (800, [self, save]
+        {
+            if (self == nullptr) return;
+            save ("3-editor.png");
+            if (auto* top = self->getTopLevelComponent())
+                top->setSize (1340, 760);   // ancho mínimo de la ventana
+            juce::Timer::callAfterDelay (500, [self, save]
+            {
+                if (self == nullptr) return;
+                save ("4-minimo.png");
+                juce::JUCEApplication::getInstance()->systemRequestedQuit();
+            });
+        });
+    });
 }
 
 // ===================== Acerca de =====================

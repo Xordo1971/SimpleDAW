@@ -30,6 +30,15 @@ public:
                                     {
                                         content->checkForRecovery();
                                         content->showWhatsNewIfUpdated();
+                                        const auto captures = juce::SystemStats::getEnvironmentVariable ("SIMPLEDAW_CAPTURA", {});
+                                        if (captures.isNotEmpty())
+                                        {
+                                            juce::Component::SafePointer<MainComponent> c (content);
+                                            juce::Timer::callAfterDelay (1200, [c, captures]
+                                            {
+                                                if (c != nullptr) c->saveDiagnosticCaptures (juce::File (captures));
+                                            });
+                                        }
                                         content->checkForUpdates (false);
                                     }
                             });
@@ -70,7 +79,14 @@ public:
            #endif
             setResizable (true, true);
             setResizeLimits (1340, 600, 10000, 10000);
-            centreWithSize (getWidth(), getHeight());
+            // Tamaño inicial amplio (1810 x 1035), sin pasarse de la pantalla
+            int w = getWidth(), h = getHeight();
+            if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+            {
+                w = juce::jmin (w, display->userArea.getWidth() - 20);
+                h = juce::jmin (h, display->userArea.getHeight() - 40);
+            }
+            centreWithSize (juce::jmax (1340, w), juce::jmax (600, h));
             if (showNow)
                 showAndFocus();
         }

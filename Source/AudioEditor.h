@@ -302,6 +302,33 @@ public:
         hScroll.setAutoHide (false);
         hScroll.addListener (this);
         addAndMakeVisible (hScroll);
+
+        // Reguladores de zoom: a lo ancho (tiempo) y a lo alto (amplitud de la onda)
+        for (auto* sl : { &hZoomSlider, &vZoomSlider })
+        {
+            sl->setSliderStyle (juce::Slider::LinearHorizontal);
+            sl->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            sl->setWantsKeyboardFocus (false);
+            addAndMakeVisible (sl);
+        }
+        hZoomSlider.setRange (0.0, 1.0);   // 0 = clip completo (alejado), 1 = muestra a muestra
+        hZoomSlider.setTooltip ("Zoom horizontal (tiempo)");
+        hZoomSlider.onValueChange = [this]
+        {
+            const double lo = minSpp, hi = maxSpp();
+            const double newSpp = hi * std::pow (lo / hi, hZoomSlider.getValue());
+            const double centre = viewStart + waveArea.getWidth() * spp * 0.5;
+            spp = newSpp;
+            viewStart = centre - waveArea.getWidth() * spp * 0.5;
+            fitted = false;
+            clampView();
+            repaint();
+        };
+        vZoomSlider.setRange (1.0, 16.0);
+        vZoomSlider.setSkewFactorFromMidPoint (4.0);
+        vZoomSlider.setDoubleClickReturnValue (true, 1.0);
+        vZoomSlider.setTooltip ("Zoom vertical (amplitud de la onda). Doble clic: normal");
+        vZoomSlider.onValueChange = [this] { ampZoom = (float) vZoomSlider.getValue(); repaint (waveArea); };
         updateButtons();
     }
 
@@ -472,6 +499,9 @@ public:
         g.setColour (Theme::textDim);
         g.drawFittedText (infoText (r), infoArea, juce::Justification::centredRight, 1, 0.8f);
 
+        Theme::drawZoomIcon (g, hZoomLabelArea, false);
+        Theme::drawZoomIcon (g, vZoomLabelArea, true);
+
         // Zona de onda
         auto wa = waveArea.toFloat();
         Theme::fillInset (g, wa.expanded (1.0f), juce::Colour (0xff17181b), 3.0f);
@@ -572,12 +602,23 @@ public:
 
         r.reduce (8, 0);
         auto scrollRow = r.removeFromBottom (16);
+        hZoomSlider.setBounds (scrollRow.removeFromRight (110));
+        hZoomLabelArea = scrollRow.removeFromRight (20);
+        scrollRow.removeFromRight (10);
+        vZoomSlider.setBounds (scrollRow.removeFromRight (80));
+        vZoomLabelArea = scrollRow.removeFromRight (20);
+        scrollRow.removeFromRight (10);
         rulerArea = r.removeFromTop (20).withTrimmedTop (2);
         r.removeFromBottom (4);
         waveArea = r;
         hScroll.setBounds (scrollRow.reduced (0, 2));
 
-        clampView();
+        // Mientras se esté viendo el clip completo, se reajusta al cambiar el tamaño del editor
+        // (al abrirse, el editor aún no tenía tamaño y la onda salía comprimida en un trozo)
+        if (fitted)
+            zoomToFit();
+        else
+            clampView();
     }
 
     // ---------- Ratón ----------
@@ -650,6 +691,7 @@ public:
             const double newSpp = juce::jlimit (minSpp, maxSpp(), spp * factor);
             viewStart = anchor - (e.x - waveArea.getX()) * newSpp;
             spp = newSpp;
+            fitted = false;
             clampView();
         }
         else
@@ -730,6 +772,7 @@ private:
 
     void zoomToFit()
     {
+        fitted = true;
         if (auto* r = findRegion())
             spp = juce::jmax (minSpp, (double) r->getLength() / juce::jmax (50, waveArea.getWidth()));
         viewStart = 0.0;
@@ -743,6 +786,7 @@ private:
                                              : viewStart + waveArea.getWidth() * spp * 0.5;
         spp = juce::jlimit (minSpp, maxSpp(), spp * factor);
         viewStart = centre - waveArea.getWidth() * spp * 0.5;
+        fitted = false;
         clampView();
         repaint();
     }
@@ -761,6 +805,10 @@ private:
         viewStart = juce::jlimit (0.0, juce::jmax (0.0, len - visible * 0.5), viewStart);
         hScroll.setRangeLimits (0.0, juce::jmax (len, viewStart + visible), juce::dontSendNotification);
         hScroll.setCurrentRange (viewStart, visible, juce::dontSendNotification);
+
+        const double lo = minSpp, hi = maxSpp();
+        if (hi > lo)
+            hZoomSlider.setValue (std::log (hi / juce::jlimit (lo, hi, spp)) / std::log (hi / lo), juce::dontSendNotification);
     }
 
     void scrollBarMoved (juce::ScrollBar*, double newStart) override
@@ -851,7 +899,7 @@ private:
             for (auto s = first; s <= last; ++s)
             {
                 const float x = sampleToX (s);
-                const float y = mid - juce::jlimit (-1.0f, 1.0f, data[s]) * half;
+                const float y = mid - juce::jlimit (-1.0f, 1.0f, data[s] * ampZoom) * half;
                 if (! started) { p.startNewSubPath (x, y); started = true; }
                 else           p.lineTo (x, y);
             }
@@ -859,7 +907,7 @@ private:
             g.strokePath (p, juce::PathStrokeType (1.3f));
             if (spp < 0.15)
                 for (auto s = first; s <= last; ++s)
-                    g.fillEllipse (sampleToX (s) - 2.0f, mid - data[s] * half - 2.0f, 4.0f, 4.0f);
+                    g.fillEllipse (sampleToX (s) - 2.0f, mid - juce::jlimit (-1.0f, 1.0f, data[s] * ampZoom) * half - 2.0f, 4.0f, 4.0f);
             return;
         }
 
@@ -889,7 +937,7 @@ private:
                 auto range = juce::FloatVectorOperations::findMinAndMax (data + a, (int) (b - a));
                 lo = range.getStart(); hi = range.getEnd();
             }
-            g.drawVerticalLine (x, mid - juce::jlimit (-1.0f, 1.0f, hi) * half, mid - juce::jlimit (-1.0f, 1.0f, lo) * half + 1.0f);
+            g.drawVerticalLine (x, mid - juce::jlimit (-1.0f, 1.0f, hi * ampZoom) * half, mid - juce::jlimit (-1.0f, 1.0f, lo * ampZoom) * half + 1.0f);
         }
     }
 
@@ -1223,6 +1271,10 @@ private:
 
     juce::Rectangle<int> titleArea, infoArea, rulerArea, waveArea;
     juce::ScrollBar hScroll { false };
+    juce::Slider hZoomSlider, vZoomSlider;
+    juce::Rectangle<int> hZoomLabelArea, vZoomLabelArea;
+    float ampZoom = 1.0f;     // zoom vertical de la onda
+    bool fitted = true;       // se ve el clip completo (se mantiene así al cambiar de tamaño)
 
     juce::TextButton undoButton { "Deshacer" }, redoButton { "Rehacer" },
                      cutButton { "Cortar" }, copyButton { "Copiar" }, pasteButton { "Pegar" },

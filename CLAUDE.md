@@ -32,6 +32,9 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Textos con acentos: `tr8 ("...")` (Text.h); nunca `juce::String` directo de un literal no ASCII.
 - No capturar "structured bindings" en lambdas (MSVC en C++17 falla).
 - Tras un cambio: compilar en Mac y probar; el motor tiene pruebas sin interfaz en `Tests/` (ver LEEME).
+- Revisar el diseño sin pantalla: `SIMPLEDAW_CAPTURA=carpeta [SIMPLEDAW_CAPTURA_AUDIO=archivo.wav]
+  build-mac/.../SimpleDAW.app/Contents/MacOS/SimpleDAW` guarda PNG de la ventana (barra, nombres, editor con
+  onda, ancho mínimo) y se cierra (`MainComponent::saveDiagnosticCaptures`).
 - Al entregar una versión nueva, subir el número en CMakeLists.txt y escribir sus novedades en CHANGELOG.md
   (apartado `## x.y.z`): es el texto de la Release y lo que la app enseña al actualizar.
 

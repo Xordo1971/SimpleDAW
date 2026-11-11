@@ -89,6 +89,10 @@ public:
     void checkForUpdates (bool askedByUser);   // GitHub: ¿hay una versión nueva?
     void showWhatsNewIfUpdated();              // tras actualizar: novedades de la versión nueva (CHANGELOG.md)
 
+    // Diagnóstico: con la variable de entorno SIMPLEDAW_CAPTURA=carpeta guarda imágenes de la ventana
+    // (barra normal y con nombres desplegados) y se cierra. Sirve para revisar el diseño sin pantalla.
+    void saveDiagnosticCaptures (const juce::File& folder);
+
     // Soltar archivos fuera de una pista: se crean pistas nuevas
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
     void filesDropped (const juce::StringArray& files, int x, int y) override;
@@ -263,6 +267,39 @@ private:
     IconButton recordButton   { "rec",       IconButton::Icon::record, Theme::recordRed };
     IconButton zoomOutButton  { "alejar",    IconButton::Icon::zoomOut };
     IconButton zoomInButton   { "acercar",   IconButton::Icon::zoomIn };
+
+    // Zoom de las pistas con reguladores: a lo ancho (tiempo) y a lo alto (altura de las pistas)
+    juce::Slider hZoomSlider, vZoomSlider;
+    int trackHeight = 84;
+    void setTrackHeight (int h);
+    void syncZoomSliders();
+
+    // Franja plegable bajo la barra superior: muestra u oculta el nombre de cada botón
+    struct LabelsToggle : public juce::Button
+    {
+        LabelsToggle() : juce::Button ("nombres") {}
+        bool expanded = false;
+        void paintButton (juce::Graphics& g, bool over, bool down) override
+        {
+            auto r = getLocalBounds().toFloat();
+            g.setColour (Theme::panel.darker (down ? 0.3f : 0.15f));
+            g.fillRect (r);
+            g.setColour (Theme::border);
+            g.drawHorizontalLine (getHeight() - 1, 0.0f, r.getRight());
+            // Asa central con una flecha (abajo: desplegar; arriba: plegar)
+            auto handle = r.withSizeKeepingCentre (46.0f, r.getHeight());
+            g.setColour ((over ? Theme::text : Theme::textDim).withAlpha (over ? 0.9f : 0.6f));
+            juce::Path p;
+            const float cx = handle.getCentreX(), cy = handle.getCentreY(), w = 5.0f, h = 2.5f;
+            if (expanded) { p.startNewSubPath (cx - w, cy + h); p.lineTo (cx, cy - h); p.lineTo (cx + w, cy + h); }
+            else          { p.startNewSubPath (cx - w, cy - h); p.lineTo (cx, cy + h); p.lineTo (cx + w, cy - h); }
+            g.strokePath (p, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    };
+    LabelsToggle labelsToggle;
+    bool showButtonLabels = false;
+    int toolbarTotalHeight() const;
+    juce::Rectangle<int> vZoomLabelArea;
     LcdDisplay lcd;
     juce::Label deviceInfo;
 
