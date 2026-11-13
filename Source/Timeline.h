@@ -150,7 +150,7 @@ public:
                 auto flag = juce::Rectangle<float> (x, markerRow.getY() + 1.0f, w, markerRow.getHeight() - 2.0f);
                 g.setColour (c.withAlpha (draggingMarker == (int) i ? 0.6f : 0.35f));
                 g.fillRect (flag);
-                g.setColour (juce::Colours::white);
+                g.setColour (Theme::strongText);
                 g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
                 g.drawText (m.name, flag.reduced (5.0f, 0.0f), juce::Justification::centredLeft, true);
             }

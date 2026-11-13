@@ -46,7 +46,7 @@ public:
                 const bool beatStart = s % stepsPerBeat == 0;
                 const auto v = pat.steps[(size_t) inst][(size_t) s];
                 const bool beatShade = (s / stepsPerBeat) % 2 == 0;
-                Theme::fillInset (g, cell, beatShade ? juce::Colour (0xff2a2c31) : juce::Colour (0xff24262a), 3.0f);
+                Theme::fillInset (g, cell, beatShade ? Theme::laneAlt : Theme::lane, 3.0f);
                 if (v > 0)
                 {
                     const float alpha = v == 1 ? 0.45f : v == 2 ? 0.75f : 1.0f;

@@ -151,7 +151,7 @@ public:
         g.fillAll (Theme::panel);
 
         auto meter = meterArea.toFloat();
-        Theme::fillInset (g, meter, juce::Colour (0xff131417), 10.0f);
+        Theme::fillInset (g, meter, Theme::screen, 10.0f);
 
         const bool hasNote = frequency > 0.0f;
         const auto target = hasNote ? targetFor (frequency) : Target {};

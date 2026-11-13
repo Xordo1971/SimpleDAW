@@ -216,6 +216,8 @@ private:
     void ensureLoopRange();
     void loadAppSettings();
     void saveAppSettings();
+    void setLightMode (bool on);
+    bool lightModeSaved = false;   // "Ver > Modo claro" (se guarda en los ajustes)
     void offerUpdate (const Updater::Release&);
     juce::String skippedVersion;   // "Saltar esta versión"
     juce::String lastRunVersion;   // versión con la que se abrió la última vez (para enseñar las novedades)
@@ -260,6 +262,7 @@ private:
     IconButton importButton   { "importar",  IconButton::Icon::import };
     IconButton editorButton   { "editor",    IconButton::Icon::wave };
     IconButton tunerButton    { "afinador",  IconButton::Icon::tuner,  Theme::soloYellow };
+    IconButton themeButton    { "tema",      IconButton::Icon::theme,  Theme::accent };
     IconButton metronomeButton{ "metronomo", IconButton::Icon::metronome, Theme::soloYellow };
     IconButton cycleButton    { "ciclo",     IconButton::Icon::cycle, juce::Colour (0xffffc801) };
     IconButton toStartButton  { "inicio",    IconButton::Icon::toStart };
@@ -327,7 +330,7 @@ private:
 
     juce::File projectFile;            // vacío = proyecto sin guardar
     juce::String savedSnapshot;        // estado al guardar, para saber si hay cambios
-    juce::Image logo;
+    juce::Image logo, logoLight;   // logoLight: "SIMPLE" en oscuro para el modo claro
     juce::Rectangle<int> logoArea;
 
     Track* selectedTrack = nullptr;

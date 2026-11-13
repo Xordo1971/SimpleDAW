@@ -31,13 +31,25 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   tras actualizar, enseña las novedades del CHANGELOG.md incluido en la app), `Drums.h`/`DrumEditor.h`,
   `AudioEditor.h`, `Timeline.h`, `Tuner.h`, `Splash.h` (también "Ver > Acerca de"), `Theme.h`, `AppPaths.h`, `Undo.h`.
 
+## Forma de trabajar con Claude
+- Antes de cada petición, valorar brevemente su complejidad y qué modelo basta para hacerla bien. Si el modelo
+  en uso es más potente de lo necesario, recomendar en una línea cambiar a uno más eficiente (Haiku, Sonnet u
+  Opus); si es el adecuado, responder sin avisos. La calidad va primero; después, gastar poco de los límites.
+  Orientación: commits, retoques de colores o textos y preguntas cortas → Haiku o Sonnet; funciones nuevas o
+  fallos delicados del motor de audio → Opus.
+
 ## Convenciones
 - Textos con acentos: `tr8 ("...")` (Text.h); nunca `juce::String` directo de un literal no ASCII.
 - No capturar "structured bindings" en lambdas (MSVC en C++17 falla).
 - Tras un cambio: compilar en Mac y probar; el motor tiene pruebas sin interfaz en `Tests/` (ver LEEME).
+- Modo claro/oscuro: los colores neutros de `Theme` y `StripLook` son variables (`setLight`); los de estado son
+  constantes. Usar siempre los colores de `Theme` (p. ej. `Theme::contrast` para rejillas, `Theme::strongText`
+  para títulos), no blanco/negro fijos. El cambio en caliente (`MainComponent::setLightMode`) recolorea los
+  `setColour` que coinciden con la paleta antigua. Se guarda en `lightMode` (ajustes) y se aplica en Main.cpp.
 - Revisar el diseño sin pantalla: `SIMPLEDAW_CAPTURA=carpeta [SIMPLEDAW_CAPTURA_AUDIO=archivo.wav]
   build-mac/.../SimpleDAW.app/Contents/MacOS/SimpleDAW` guarda PNG de la ventana (barra, nombres, editor con
-  onda, ancho mínimo) y se cierra (`MainComponent::saveDiagnosticCaptures`).
+  onda, ancho mínimo) y se cierra (`MainComponent::saveDiagnosticCaptures`). `SIMPLEDAW_MODO=claro|oscuro` fuerza
+  el modo sin guardarlo.
 - Al entregar una versión nueva, subir el número en CMakeLists.txt y escribir sus novedades en CHANGELOG.md
   (apartado `## x.y.z`): es el texto de la Release y lo que la app enseña al actualizar.
 

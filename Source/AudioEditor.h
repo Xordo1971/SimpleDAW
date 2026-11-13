@@ -505,7 +505,7 @@ public:
 
         // Zona de onda
         auto wa = waveArea.toFloat();
-        Theme::fillInset (g, wa.expanded (1.0f), juce::Colour (0xff17181b), 3.0f);
+        Theme::fillInset (g, wa.expanded (1.0f), Theme::screen, 3.0f);
 
         if (r == nullptr)
         {
@@ -861,7 +861,7 @@ private:
             if (x < waveArea.getX() - 1) continue;
             g.setColour (Theme::textDim.withAlpha (0.6f));
             g.drawVerticalLine ((int) x, (float) rulerArea.getBottom() - 6.0f, (float) rulerArea.getBottom());
-            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            g.setColour (Theme::contrast.withAlpha (0.04f));
             g.drawVerticalLine ((int) x, (float) waveArea.getY(), (float) waveArea.getBottom());
             g.setColour (Theme::textDim);
             const int m = (int) (t / 60.0);
@@ -878,16 +878,16 @@ private:
         const float half = lane.getHeight() * 0.46f;
 
         // Líneas de referencia (0 y -6 dB)
-        g.setColour (juce::Colours::white.withAlpha (0.06f));
+        g.setColour (Theme::contrast.withAlpha (0.06f));
         g.drawHorizontalLine ((int) mid, lane.getX(), lane.getRight());
-        g.setColour (juce::Colours::white.withAlpha (0.03f));
+        g.setColour (Theme::contrast.withAlpha (0.03f));
         g.drawHorizontalLine ((int) (mid - half * 0.5f), lane.getX(), lane.getRight());
         g.drawHorizontalLine ((int) (mid + half * 0.5f), lane.getX(), lane.getRight());
 
         const auto len = clip.getLength();
         const float* data = clip.audio.getReadPointer (ch);
         const auto& peaks = clip.peaks[ch];
-        const auto colour = track->colour.brighter (0.5f);
+        const auto colour = Theme::light ? track->colour.darker (0.3f) : track->colour.brighter (0.5f);
         const int x0 = waveArea.getX(), x1 = waveArea.getRight();
 
         if (spp < 1.5)

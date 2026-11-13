@@ -60,7 +60,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff24272e));
+        g.fillAll (Theme::panel);
         g.setColour (Theme::border);
         g.drawHorizontalLine (title.getY() - 10, 12.0f, (float) getWidth() - 12.0f);
     }

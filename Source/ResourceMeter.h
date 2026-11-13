@@ -62,7 +62,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat();
-        Theme::fillInset (g, r, juce::Colour (0xff121315), 4.0f);
+        Theme::fillInset (g, r, Theme::meterBg, 4.0f);
         auto inner = r.reduced (6.0f, 4.0f);
         const float rowH = inner.getHeight() * 0.5f;
         drawRow (g, inner.removeFromTop (rowH), "CPU", cpuShown, cpuPeak, juce::String (juce::roundToInt (cpuShown * 100.0f)) + " %");
@@ -75,9 +75,9 @@ private:
     void drawRow (juce::Graphics& g, juce::Rectangle<float> row, const juce::String& label, float value, float peak, const juce::String& text)
     {
         g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 9.5f, juce::Font::bold));
-        g.setColour (Theme::textDim);
+        g.setColour (Theme::meterTextDim);
         g.drawText (label, row.removeFromLeft (26.0f), juce::Justification::centredLeft);
-        g.setColour (Theme::text);
+        g.setColour (Theme::meterText);
         g.drawText (text, row.removeFromRight (46.0f), juce::Justification::centredRight);
         row.removeFromRight (4.0f);
 

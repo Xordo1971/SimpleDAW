@@ -69,7 +69,7 @@ public:
 private:
     void drawBar (juce::Graphics& g, juce::Rectangle<float> r, float level, float hold)
     {
-        Theme::fillInset (g, r, juce::Colour (0xff111214), 2.0f);
+        Theme::fillInset (g, r, Theme::meterBg, 2.0f);
         auto inner = r.reduced (1.0f);
         const float n = toNorm (level);
         if (n > 0.0f)
@@ -94,17 +94,46 @@ private:
 // con relieve, huecos hundidos, cajas de valor oscuras, fader metálico y potenciómetro claro.
 namespace StripLook
 {
-    const juce::Colour background     { 0xff4b4c4f };
-    const juce::Colour backgroundDark { 0xff3f4043 };
-    const juce::Colour slot           { 0xff3c3d40 };   // hueco vacío
-    const juce::Colour face           { 0xff686a6e };   // botones y huecos ocupados
-    const juce::Colour edge           { 0xff27282a };
-    const juce::Colour text           { 0xffe9eaec };
-    const juce::Colour textDim        { 0xffb3b5b9 };
-    const juce::Colour valueBox       { 0xff2a2b2d };
-    const juce::Colour muteOn         { 0xff47b4e6 };
-    const juce::Colour pluginMark     { 0xff79aef5 };
-    const juce::Colour effectMark     { 0xff86cf8f };
+    // Neutros (cambian con el modo claro, igual que los de Theme)
+    inline juce::Colour background     { 0xff4b4c4f };
+    inline juce::Colour backgroundDark { 0xff3f4043 };
+    inline juce::Colour slot           { 0xff3c3d40 };   // hueco vacío
+    inline juce::Colour face           { 0xff686a6e };   // botones y huecos ocupados
+    inline juce::Colour edge           { 0xff27282a };
+    inline juce::Colour text           { 0xffe9eaec };
+    inline juce::Colour textDim        { 0xffb3b5b9 };
+    // Iguales en los dos modos
+    inline const juce::Colour valueBox   { 0xff2a2b2d };   // cajas de valor: oscuras siempre
+    inline const juce::Colour valueText  { 0xffe9eaed };
+    inline const juce::Colour muteOn     { 0xff47b4e6 };
+    inline const juce::Colour pluginMark { 0xff79aef5 };
+    inline const juce::Colour effectMark { 0xff86cf8f };
+
+    inline std::vector<Theme::Swatch> neutralSwatches()
+    {
+        return {
+            { &background,     0xff4b4c4f, 0xffc4c5c8 },
+            { &backgroundDark, 0xff3f4043, 0xffb4b6b9 },
+            { &slot,           0xff3c3d40, 0xffb0b2b5 },
+            { &face,           0xff686a6e, 0xffe4e5e7 },
+            { &edge,           0xff27282a, 0xff86888c },
+            { &text,           0xffe9eaec, 0xff1c1d1f },
+            { &textDim,        0xffb3b5b9, 0xff4a4c50 },
+        };
+    }
+
+    inline std::map<juce::uint32, juce::uint32> setLight (bool on)
+    {
+        std::map<juce::uint32, juce::uint32> changes;
+        for (auto& s : neutralSwatches())
+        {
+            const auto now = juce::Colour (on ? s.light : s.dark);
+            if (s.colour->getARGB() != now.getARGB())
+                changes.emplace (s.colour->getARGB(), now.getARGB());
+            *s.colour = now;
+        }
+        return changes;
+    }
 
     // Botón o hueco ocupado: gris con un degradado suave y borde oscuro
     inline void drawFace (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour base, bool over, bool down)
@@ -148,6 +177,12 @@ class StripLookAndFeel : public SimpleDAWLookAndFeel
 public:
     StripLookAndFeel()
     {
+        applyColours();
+    }
+
+    void applyColours() override
+    {
+        SimpleDAWLookAndFeel::applyColours();
         setColour (juce::TextButton::textColourOffId, StripLook::text);
         setColour (juce::TextButton::textColourOnId, juce::Colours::black);
     }
@@ -622,7 +657,7 @@ public:
 
         // Volumen y pico, uno junto al otro
         const float db = (float) fader.getValue();
-        StripLook::drawValueBox (g, volumeBox.toFloat(), db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1), StripLook::text);
+        StripLook::drawValueBox (g, volumeBox.toFloat(), db <= -59.9f ? juce::String ("-inf") : juce::String (db, 1), StripLook::valueText);
         PeakReadout::draw (g, peakBox.toFloat(), track.outputHold, false);
 
         // Escala de dB entre el fader y el medidor

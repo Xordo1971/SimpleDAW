@@ -3,25 +3,107 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 
-// Paleta y estilo visual de SimpleDAW: oscuro, con volumen (degradados, relieves y biseles suaves)
+// Paleta y estilo visual de SimpleDAW, con volumen (degradados, relieves y biseles suaves).
+// Dos modos: oscuro (el de siempre) y claro. Los colores neutros cambian con Theme::setLight;
+// los de estado (acento, rojo de grabar, verde, amarillo...) son iguales en los dos.
 namespace Theme
 {
-    const juce::Colour background   { 0xff1c1d20 };
-    const juce::Colour panel        { 0xff2c2e33 };
-    const juce::Colour panelLight   { 0xff3a3d43 };
-    const juce::Colour panelDark    { 0xff222327 };
-    const juce::Colour lane         { 0xff26282c };
-    const juce::Colour laneAlt      { 0xff2a2c30 };
-    const juce::Colour border       { 0xff111214 };
-    const juce::Colour text         { 0xffd8d9dc };
-    const juce::Colour textDim      { 0xff8d9097 };
-    const juce::Colour accent       { 0xff4ea1ff };
-    const juce::Colour playGreen    { 0xff3fc46b };
-    const juce::Colour recordRed    { 0xffe5484d };
-    const juce::Colour soloYellow   { 0xffe8c547 };
-    const juce::Colour muteBlue     { 0xff4a90d9 };
-    const juce::Colour monitorOrange{ 0xffe89a3c };
-    const juce::Colour playhead     { 0xffeeeeee };
+    inline bool light = false;
+
+    // Neutros: empiezan en modo oscuro
+    inline juce::Colour background   { 0xff1c1d20 };
+    inline juce::Colour panel        { 0xff2c2e33 };
+    inline juce::Colour panelLight   { 0xff3a3d43 };
+    inline juce::Colour panelDark    { 0xff222327 };
+    inline juce::Colour lane         { 0xff26282c };
+    inline juce::Colour laneAlt      { 0xff2a2c30 };
+    inline juce::Colour border       { 0xff111214 };
+    inline juce::Colour text         { 0xffd8d9dc };
+    inline juce::Colour textDim      { 0xff8d9097 };
+    inline juce::Colour playhead     { 0xffeeeeee };
+    inline juce::Colour strongText   { 0xffffffff };   // títulos y textos que destacan
+    inline juce::Colour contrast     { 0xfffffffe };   // rejillas y brillos sobre las superficies (con transparencia)
+    inline juce::Colour screen       { 0xff15171a };   // pantalla de la barra (posición, tempo...)
+    inline juce::Colour screenText   { 0xffe9edf2 };
+    inline juce::Colour screenTextDim{ 0xffc9ced6 };
+    inline juce::Colour field        { 0xff1b1c1f };   // cajas de texto
+    inline juce::Colour dialogBox    { 0xff53565c };   // caja del mensaje en las ventanas emergentes
+    inline juce::Colour dialogText   { 0xfff2f3f5 };
+
+    // De estado: iguales en los dos modos
+    inline const juce::Colour accent       { 0xff4ea1ff };
+    inline const juce::Colour playGreen    { 0xff3fc46b };
+    inline const juce::Colour recordRed    { 0xffe5484d };
+    inline const juce::Colour soloYellow   { 0xffe8c547 };
+    inline const juce::Colour muteBlue     { 0xff4a90d9 };
+    inline const juce::Colour monitorOrange{ 0xffe89a3c };
+    inline const juce::Colour meterBg      { 0xff121315 };   // fondo de medidores y picos (oscuro siempre)
+    inline const juce::Colour meterText    { 0xffd8d9dc };
+    inline const juce::Colour meterTextDim { 0xff8d9097 };
+
+    struct Swatch { juce::Colour* colour; juce::uint32 dark, light; };
+
+    inline std::vector<Swatch> neutralSwatches()
+    {
+        return {
+            { &background,    0xff1c1d20, 0xffdedfe2 },
+            { &panel,         0xff2c2e33, 0xffcfd1d5 },
+            { &panelLight,    0xff3a3d43, 0xffeceef0 },
+            { &panelDark,     0xff222327, 0xffc3c6cb },
+            { &lane,          0xff26282c, 0xffe6e7ea },
+            { &laneAlt,       0xff2a2c30, 0xffdfe1e4 },
+            { &border,        0xff111214, 0xff9a9ea5 },
+            { &text,          0xffd8d9dc, 0xff1e2024 },
+            { &textDim,       0xff8d9097, 0xff5c6068 },
+            { &playhead,      0xffeeeeee, 0xff26282c },
+            { &strongText,    0xffffffff, 0xff101114 },
+            { &contrast,      0xfffffffe, 0xff000001 },
+            { &screen,        0xff15171a, 0xfff4f6f8 },
+            { &screenText,    0xffe9edf2, 0xff15181c },
+            { &screenTextDim, 0xffc9ced6, 0xff3a3f47 },
+            { &field,         0xff1b1c1f, 0xfffbfbfc },
+            { &dialogBox,     0xff53565c, 0xfff6f7f8 },
+            { &dialogText,    0xfff2f3f5, 0xff1b1d21 },
+        };
+    }
+
+    // Cambia los colores neutros y devuelve qué color antiguo pasa a cuál nuevo (para recolorear
+    // los componentes que ya tenían un color puesto con setColour)
+    inline std::map<juce::uint32, juce::uint32> setLight (bool on)
+    {
+        std::map<juce::uint32, juce::uint32> changes;
+        light = on;
+        for (auto& s : neutralSwatches())
+        {
+            const auto now = juce::Colour (on ? s.light : s.dark);
+            if (s.colour->getARGB() != now.getARGB())
+                changes.emplace (s.colour->getARGB(), now.getARGB());
+            *s.colour = now;
+        }
+        return changes;
+    }
+
+    // Recolorea un componente y sus hijos: cada color puesto con setColour que coincida con un
+    // color antiguo de la paleta pasa al nuevo
+    inline void remapColours (juce::Component& c, const std::map<juce::uint32, juce::uint32>& changes)
+    {
+        auto& props = c.getProperties();
+        std::vector<std::pair<int, juce::uint32>> toSet;
+        for (int i = 0; i < props.size(); ++i)
+        {
+            const auto name = props.getName (i).toString();
+            if (! name.startsWith ("jcclr_"))
+                continue;
+            const auto it = changes.find ((juce::uint32) (int) props.getValueAt (i));
+            if (it != changes.end())
+                toSet.emplace_back (name.substring (6).getHexValue32(), it->second);
+        }
+        for (auto& p : toSet)
+            c.setColour (p.first, juce::Colour (p.second));
+        for (auto* child : c.getChildren())
+            remapColours (*child, changes);
+        c.repaint();
+    }
 
     // Relleno con degradado vertical y borde, típico de las superficies "con volumen"
     inline void fillRaised (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour base, float radius)
@@ -88,8 +170,8 @@ namespace PeakReadout
     {
         const bool clip = isClip (gain);
         const float db = juce::Decibels::gainToDecibels (gain, -100.0f);
-        Theme::fillInset (g, r, clip ? Theme::recordRed.darker (0.2f) : juce::Colour (0xff121315), 3.0f);
-        g.setColour (clip ? juce::Colours::white : db > -6.0f ? Theme::soloYellow : db > -60.0f ? Theme::text : Theme::textDim);
+        Theme::fillInset (g, r, clip ? Theme::recordRed.darker (0.2f) : Theme::meterBg, 3.0f);
+        g.setColour (clip ? juce::Colours::white : db > -6.0f ? Theme::soloYellow : db > -60.0f ? Theme::meterText : Theme::meterTextDim);
         g.setFont (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 10.5f, juce::Font::bold));
         g.drawText (text (gain, sayClip), r, juce::Justification::centred);
     }
@@ -100,7 +182,14 @@ class SimpleDAWLookAndFeel : public juce::LookAndFeel_V4
 public:
     SimpleDAWLookAndFeel() : juce::LookAndFeel_V4 (juce::LookAndFeel_V4::getDarkColourScheme())
     {
+        applyColours();
+    }
+
+    // Pone los colores de la paleta actual (al crearse y al cambiar entre modo claro y oscuro)
+    virtual void applyColours()
+    {
         using namespace Theme;
+        setColourScheme (light ? juce::LookAndFeel_V4::getLightColourScheme() : juce::LookAndFeel_V4::getDarkColourScheme());
         setColour (juce::ResizableWindow::backgroundColourId, background);
         setColour (juce::TextButton::buttonColourId, panelLight);
         setColour (juce::TextButton::textColourOffId, text);
@@ -122,6 +211,12 @@ public:
         setColour (juce::ScrollBar::thumbColourId, panelLight.brighter (0.2f));
         setColour (juce::AlertWindow::backgroundColourId, panel);
         setColour (juce::ListBox::backgroundColourId, panelDark);
+        setColour (juce::TextEditor::backgroundColourId, field);
+        setColour (juce::TextEditor::textColourId, text);
+        setColour (juce::TextEditor::outlineColourId, border);
+        setColour (juce::CaretComponent::caretColourId, text);
+        setColour (juce::ResizableWindow::backgroundColourId, background);
+        setColour (juce::DocumentWindow::textColourId, text);
     }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& bg,
@@ -255,7 +350,7 @@ public:
 class IconButton : public juce::Button
 {
 public:
-    enum class Icon { toStart, play, record, stop, zoomIn, zoomOut, plus, settings, recordSmall, close, mixer, plugin, import, wave, metronome, tuner, cycle };
+    enum class Icon { toStart, play, record, stop, zoomIn, zoomOut, plus, settings, recordSmall, close, mixer, plugin, import, wave, metronome, tuner, cycle, theme };
 
     IconButton (const juce::String& name, Icon i, juce::Colour onColour = Theme::accent)
         : juce::Button (name), icon (i), activeColour (onColour)
@@ -414,6 +509,25 @@ private:
                 g.fillRect (cx - 0.9f, a.getY() + a.getHeight() * 0.72f, 1.8f, a.getHeight() * 0.28f);
                 return;
             }
+            case Icon::theme:
+            {
+                // Círculo medio lleno (claro/oscuro) con rayitos de sol
+                const auto c = a.getCentre();
+                const float rr = a.getWidth() * 0.32f;
+                g.drawEllipse (c.x - rr, c.y - rr, 2 * rr, 2 * rr, 1.6f);
+                juce::Path half;
+                half.addPieSegment (c.x - rr, c.y - rr, 2 * rr, 2 * rr, juce::MathConstants<float>::pi,
+                                    juce::MathConstants<float>::twoPi, 0.0f);
+                g.fillPath (half);
+                for (int i = 0; i < 8; ++i)
+                {
+                    const float ang = i * juce::MathConstants<float>::pi / 4.0f;
+                    const auto p1 = c.getPointOnCircumference (rr + 2.5f, ang);
+                    const auto p2 = c.getPointOnCircumference (rr + 5.0f, ang);
+                    g.drawLine (p1.x, p1.y, p2.x, p2.y, 1.4f);
+                }
+                return;
+            }
             case Icon::import:
             {
                 // Flecha hacia abajo sobre una bandeja
@@ -474,7 +588,8 @@ public:
     {
         tempoEditor.setJustification (juce::Justification::centred);
         tempoEditor.setInputRestrictions (6, "0123456789.,");
-        tempoEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff23262b));
+        tempoEditor.setColour (juce::TextEditor::backgroundColourId, Theme::field);
+        tempoEditor.setColour (juce::TextEditor::textColourId, Theme::screenText);
         tempoEditor.setColour (juce::TextEditor::outlineColourId, Theme::accent);
         tempoEditor.setFont (juce::FontOptions (16.0f, juce::Font::bold));
         tempoEditor.onReturnKey = [this] { commitTempoText(); };
@@ -497,7 +612,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto r = getLocalBounds().toFloat().reduced (0.5f);
-        Theme::fillInset (g, r, juce::Colour (0xff15171a), 6.0f);
+        Theme::fillInset (g, r, Theme::screen, 6.0f);
 
         const auto mono = juce::Font::getDefaultMonospacedFontName();
         auto label = [&g] (juce::Rectangle<float> a, const juce::String& t, juce::Colour c)
@@ -508,7 +623,7 @@ public:
         };
         auto separator = [&g, &r] (juce::Rectangle<int> a)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.07f));
+            g.setColour (Theme::contrast.withAlpha (0.07f));
             g.drawVerticalLine (a.getRight() + 4, r.getY() + 6.0f, r.getBottom() - 6.0f);
         };
 
@@ -522,20 +637,20 @@ public:
             g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
             g.drawText (stateText, posArea.toFloat().removeFromTop (13.0f).withTrimmedTop (3.0f), juce::Justification::centredRight);
         }
-        g.setColour (juce::Colour (0xffe9edf2));
+        g.setColour (Theme::screenText);
         g.setFont (juce::FontOptions (mono, 21.0f, juce::Font::plain));
         g.drawText (position, posArea.toFloat().withTrimmedTop (12.0f), juce::Justification::centredLeft);
         separator (posArea);
 
         label (timeArea.toFloat(), "TIEMPO", Theme::textDim);
-        g.setColour (juce::Colour (0xffc9ced6));
+        g.setColour (Theme::screenTextDim);
         g.setFont (juce::FontOptions (mono, 14.0f, juce::Font::plain));
         g.drawText (time, timeArea.toFloat().withTrimmedTop (12.0f), juce::Justification::centredLeft);
         separator (timeArea);
 
         const bool overTempo = isMouseOver() && tempoArea.contains (getMouseXYRelative());
         label (tempoArea.toFloat(), "TEMPO", overTempo ? Theme::accent : Theme::textDim);
-        g.setColour (juce::Colour (0xffe9edf2));
+        g.setColour (Theme::screenText);
         g.setFont (juce::FontOptions (mono, 17.0f, juce::Font::plain));
         g.drawText (juce::String (bpm, std::abs (bpm - std::round (bpm)) < 0.05 ? 0 : 1),
                     tempoArea.toFloat().withTrimmedTop (12.0f), juce::Justification::centredLeft);
@@ -543,7 +658,7 @@ public:
 
         const bool overSig = isMouseOver() && sigArea.contains (getMouseXYRelative());
         label (sigArea.toFloat(), tr8 ("COMPÁS"), overSig ? Theme::accent : Theme::textDim);
-        g.setColour (juce::Colour (0xffe9edf2));
+        g.setColour (Theme::screenText);
         g.setFont (juce::FontOptions (mono, 17.0f, juce::Font::plain));
         g.drawText (juce::String (sigNum) + "/" + juce::String (sigDen), sigArea.toFloat().withTrimmedTop (12.0f),
                     juce::Justification::centredLeft);

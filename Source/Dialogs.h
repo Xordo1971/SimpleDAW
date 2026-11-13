@@ -50,7 +50,7 @@ namespace Dialogs
             editor.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
             editor.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
             editor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
-            editor.setColour (juce::TextEditor::textColourId, juce::Colour (0xfff2f3f5));
+            editor.setColour (juce::TextEditor::textColourId, Theme::dialogText);
             editor.setColour (juce::TextEditor::highlightColourId, Theme::accent.withAlpha (0.4f));
             editor.setFont (font);
             editor.setText (bullets (text), false);
@@ -69,19 +69,19 @@ namespace Dialogs
         void paint (juce::Graphics& g) override
         {
             auto r = getLocalBounds().toFloat();
-            g.setColour (juce::Colour (0xff53565c));
+            g.setColour (Theme::dialogBox);
             g.fillRoundedRectangle (r, 3.0f);
 
             // Sombra interior: los bordes se oscurecen hacia dentro, como una caja hundida
             for (int i = 0; i < 10; ++i)
             {
-                g.setColour (juce::Colours::black.withAlpha (0.22f * (1.0f - (float) i / 10.0f)));
+                g.setColour (juce::Colours::black.withAlpha ((Theme::light ? 0.07f : 0.22f) * (1.0f - (float) i / 10.0f)));
                 g.drawRoundedRectangle (r.reduced ((float) i + 0.5f), 3.0f, 1.0f);
             }
 
             if (heading.isNotEmpty())
             {
-                g.setColour (juce::Colours::white);
+                g.setColour (Theme::dialogText);
                 g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
                 g.drawText (heading, getLocalBounds().reduced (pad).removeFromTop (20), juce::Justification::centredLeft);
             }
@@ -151,7 +151,7 @@ namespace Dialogs
             e->setSelectAllWhenFocused (true);
             e->setEscapeAndReturnKeysConsumed (false);   // Intro y Esc llegan a los botones
             e->setIndents (8, 6);
-            e->setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff1b1c1f));
+            e->setColour (juce::TextEditor::backgroundColourId, Theme::field);
             e->setColour (juce::TextEditor::outlineColourId, Theme::border);
             e->setColour (juce::TextEditor::focusedOutlineColourId, Theme::accent);
             e->setColour (juce::TextEditor::textColourId, Theme::text);
@@ -185,7 +185,7 @@ namespace Dialogs
 
             drawIcon (g, iconArea.toFloat(), icon);
 
-            g.setColour (juce::Colours::white);
+            g.setColour (Theme::strongText);
             titleLayout.draw (g, titleArea.toFloat());
 
             if (intro.isNotEmpty())
@@ -249,7 +249,7 @@ namespace Dialogs
             // Título en negrita, a la derecha del icono
             const int titleX = margin + (hasIcon ? iconSize + 14 : 0);
             juce::AttributedString t;
-            t.append (getName(), juce::Font (juce::FontOptions (24.0f, juce::Font::bold)), juce::Colours::white);
+            t.append (getName(), juce::Font (juce::FontOptions (24.0f, juce::Font::bold)), Theme::strongText);
             t.setWordWrap (juce::AttributedString::byWord);
             titleLayout.createLayout (t, (float) (width - margin - titleX));
             const int titleH = (int) std::ceil (titleLayout.getHeight());

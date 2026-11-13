@@ -11,6 +11,16 @@ public:
 
     void initialise (const juce::String&) override
     {
+        // Modo claro u oscuro antes de crear ninguna ventana (SIMPLEDAW_MODO=claro|oscuro lo fuerza sin guardarlo)
+        bool lightMode = false;
+        if (auto xml = juce::XmlDocument::parse (AppPaths::appSettings()))
+            lightMode = xml->getBoolAttribute ("lightMode", false);
+        const auto forced = juce::SystemStats::getEnvironmentVariable ("SIMPLEDAW_MODO", {});
+        if (forced.isNotEmpty())
+            lightMode = forced == "claro";
+        Theme::setLight (lightMode);
+        StripLook::setLight (lightMode);
+
         splash = std::make_unique<SplashWindow> ("v" + getApplicationVersion());
 
         // Se deja que la animación arranque y luego se inicializa el audio y los plugins
@@ -68,7 +78,7 @@ public:
     {
     public:
         MainWindow (const juce::String& name, bool showNow)
-            : DocumentWindow (name, juce::Colour (0xff1b1d22), DocumentWindow::allButtons)
+            : DocumentWindow (name, Theme::background, DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
             auto* content = new MainComponent();
@@ -80,7 +90,7 @@ public:
             setMenuBar (content);                           // menús dentro de la ventana en Windows
            #endif
             setResizable (true, true);
-            setResizeLimits (1340, 600, 10000, 10000);
+            setResizeLimits (1390, 600, 10000, 10000);
             // Tamaño inicial amplio (1810 x 1035), sin pasarse de la pantalla
             int w = getWidth(), h = getHeight();
             if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
@@ -88,7 +98,7 @@ public:
                 w = juce::jmin (w, display->userArea.getWidth() - 20);
                 h = juce::jmin (h, display->userArea.getHeight() - 40);
             }
-            centreWithSize (juce::jmax (1340, w), juce::jmax (600, h));
+            centreWithSize (juce::jmax (1390, w), juce::jmax (600, h));
             if (showNow)
                 showAndFocus();
         }

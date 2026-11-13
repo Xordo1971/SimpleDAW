@@ -149,7 +149,7 @@ public:
         g.setColour (Theme::border);
         g.drawVerticalLine ((int) header.getRight() - 1, header.getY(), header.getBottom());
         g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
-        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.setColour (Theme::contrast.withAlpha (0.05f));
         g.drawHorizontalLine (0, 0.0f, header.getRight());
 
         // Franja e indicador de color de la pista
@@ -158,7 +158,7 @@ public:
 
         // Medidor de entrada con degradado verde -> amarillo -> rojo
         auto m = meterBounds.toFloat();
-        Theme::fillInset (g, m, juce::Colour (0xff121315), 2.0f);
+        Theme::fillInset (g, m, Theme::meterBg, 2.0f);
         const float db = juce::Decibels::gainToDecibels (level, -60.0f);
         const float norm = juce::jlimit (0.0f, 1.0f, juce::jmap (db, -60.0f, 0.0f, 0.0f, 1.0f));
         if (norm > 0.0f)
@@ -183,7 +183,7 @@ public:
         // Rejilla de compases y partes, alineada con la regla
         timeline.forEachGridLine (lane.getWidth(), [&] (double sec, int, int beatInBar)
         {
-            g.setColour (juce::Colours::white.withAlpha (beatInBar == 0 ? 0.075f : 0.03f));
+            g.setColour (Theme::contrast.withAlpha (beatInBar == 0 ? 0.075f : 0.03f));
             g.drawVerticalLine ((int) timeline.secondsToX (sec, lane.getX()), (float) lane.getY(), (float) lane.getBottom());
         });
         g.setColour (Theme::border);
@@ -638,7 +638,7 @@ private:
                 g.drawText (DrumColours::letter (p), rect.withHeight (13.0f).reduced (4.0f, 0.0f), juce::Justification::centredLeft, false);
             if (b == selectedDrumBar)
             {
-                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.setColour (Theme::strongText.withAlpha (0.9f));
                 g.drawRoundedRectangle (rect.reduced (0.5f), 3.0f, 1.5f);
             }
 
@@ -705,7 +705,7 @@ private:
 
         if (autoView == Track::autoPan)
         {
-            g.setColour (juce::Colours::white.withAlpha (0.08f));
+            g.setColour (Theme::contrast.withAlpha (0.08f));
             g.drawHorizontalLine ((int) valueToY (0.0f, lane), (float) lane.getX(), (float) lane.getRight());
         }
 
@@ -1035,7 +1035,7 @@ private:
         g.drawText (r.clip->name + (r.clip->getNumChannels() > 1 ? tr8 (" · estéreo") : juce::String()) + takeInfo, rect.withHeight (headerH).reduced (5.0f, 0.0f).toNearestInt(),
                     juce::Justification::centredLeft, true);
 
-        g.setColour (isSelected ? juce::Colours::white : Theme::border);
+        g.setColour (isSelected ? Theme::strongText : Theme::border);
         g.drawRoundedRectangle (rect, 3.0f, isSelected ? 1.8f : 1.0f);
     }
 

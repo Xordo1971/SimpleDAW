@@ -32,6 +32,7 @@ MainComponent::MainComponent()
     setupButton (importButton,   [this] { chooseFilesToImport(); }, tr8 ("Importar audio (wav, aiff, mp3...) a la pista seleccionada. También puedes arrastrar archivos a una pista"));
     setupButton (editorButton,   [this] { toggleEditor(); },       tr8 ("Mostrar u ocultar el editor de audio (E)"));
     setupButton (tunerButton,    [this] { toggleTuner(); },        tr8 ("Afinador de guitarra y bajo (T)"));
+    setupButton (themeButton,    [this] { setLightMode (! Theme::light); }, tr8 ("Cambiar entre modo claro y oscuro"));
     addAndMakeVisible (resourceMeter);
     setupButton (metronomeButton,[this] { toggleMetronome(); },    tr8 ("Metrónomo (K). Clic derecho: volumen y precuenta"));
     metronomeButton.onRightClick = [this] { showMetronomeOptions(); };
@@ -151,6 +152,19 @@ MainComponent::MainComponent()
         deviceInfo.setText ("Error de audio: " + error, juce::dontSendNotification);
 
     logo = Brand::loadImage ("logoapp_png");
+    if (logo.isValid())
+    {
+        // Copia para el modo claro: lo blanco (sin color) pasa a casi negro; el amarillo se queda
+        logoLight = logo.createCopy().convertedToFormat (juce::Image::ARGB);
+        juce::Image::BitmapData px (logoLight, juce::Image::BitmapData::readWrite);
+        for (int y = 0; y < px.height; ++y)
+            for (int x = 0; x < px.width; ++x)
+            {
+                const auto c = px.getPixelColour (x, y);
+                if (c.getAlpha() > 0 && c.getSaturation() < 0.25f)
+                    px.setPixelColour (x, y, juce::Colour (0xff1e2024).withAlpha (c.getAlpha()));
+            }
+    }
 
     addTrack();
     setSize (1810, 1035);   // tamaño inicial (Main.cpp lo ajusta si la pantalla es más pequeña)
@@ -474,6 +488,7 @@ void MainComponent::timerCallback()
     metronomeButton.setToggleState (engine.metronomeOn.load(), juce::dontSendNotification);
     cycleButton.setToggleState (engine.loopOn.load() || engine.punchOn.load(), juce::dontSendNotification);
     tunerButton.setToggleState (tunerWindow != nullptr && tunerWindow->isVisible(), juce::dontSendNotification);
+    themeButton.setToggleState (Theme::light, juce::dontSendNotification);
     recordButton.setToggleState (st == AudioEngine::recording, juce::dontSendNotification);
 
     updateMeters();
@@ -516,7 +531,7 @@ void MainComponent::showAudioSettings()
     juce::DialogWindow::LaunchOptions o;
     o.content.setOwned (panel);
     o.dialogTitle = tr8 ("Configuración de audio");
-    o.dialogBackgroundColour = juce::Colour (0xff24272e);
+    o.dialogBackgroundColour = Theme::panel;
     o.escapeKeyTriggersCloseButton = true;
     o.useNativeTitleBar = true;
     o.resizable = false;
@@ -577,7 +592,7 @@ void MainComponent::paint (juce::Graphics& g)
     // Logotipo (o el nombre, si no se ha incluido la imagen)
     if (logo.isValid())
     {
-        g.drawImageWithin (logo, logoArea.getX(), logoArea.getY(), logoArea.getWidth(), logoArea.getHeight(),
+        g.drawImageWithin (Theme::light && logoLight.isValid() ? logoLight : logo, logoArea.getX(), logoArea.getY(), logoArea.getWidth(), logoArea.getHeight(),
                            juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize);
     }
     else
@@ -674,7 +689,7 @@ void MainComponent::resized()
     // el transporte y el ciclo, y a su derecha el metrónomo y el afinador.
     // Si la ventana es tan estrecha que no puede ir centrada, se arrima lo justo a la derecha.
     const int bw = 44, gap = 4, sideGap = 14;
-    const int transportW = 5 * bw + 4 * gap, rightW = 2 * bw + gap;
+    const int transportW = 5 * bw + 4 * gap, rightW = 3 * bw + 2 * gap;
     const int centreX = getWidth() / 2;
     const int leftLimit = toolbar.getX() + transportW + sideGap;
     const int rightLimit = toolbar.getRight() - rightW - sideGap;
@@ -701,7 +716,8 @@ void MainComponent::resized()
 
     auto right = toolbar.withLeft (lcd.getRight() + sideGap).withWidth (rightW);
     metronomeButton.setBounds (right.removeFromLeft (bw)); right.removeFromLeft (gap);
-    tunerButton.setBounds     (right.removeFromLeft (bw));
+    tunerButton.setBounds     (right.removeFromLeft (bw)); right.removeFromLeft (gap);
+    themeButton.setBounds     (right.removeFromLeft (bw));
 
     masterStrip->setBounds (area.removeFromLeft (ChannelStrip::stripWidth));
     area.removeFromLeft (3);
@@ -2180,7 +2196,7 @@ namespace MenuIds
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
         newTrack = 10, importAudio, transpose, speed, newDrumTrack,
-        mixer = 20, editor, plugins, audioSettings, about,
+        mixer = 20, editor, plugins, audioSettings, about, lightMode,
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
 }
@@ -2264,6 +2280,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         add (MenuIds::mixer,  "Mezclador",       juce::KeyPress ('x', 0, 0), mixerOpen);
         add (MenuIds::editor, "Editor de audio", juce::KeyPress ('e', 0, 0), editorVisible);
         m.addSeparator();
+        add (MenuIds::lightMode, "Modo claro", {}, Theme::light);
+        m.addSeparator();
         add (MenuIds::plugins,       "Plugins...");
         add (MenuIds::audioSettings, "Ajustes de audio...");
         m.addSeparator();
@@ -2303,6 +2321,7 @@ void MainComponent::menuItemSelected (int itemId, int)
         case MenuIds::plugins:       showPluginManager(); break;
         case MenuIds::audioSettings: showAudioSettings(); break;
         case MenuIds::about:         showAbout(); break;
+        case MenuIds::lightMode:     setLightMode (! Theme::light); break;
         case MenuIds::play:          togglePlay(); break;
         case MenuIds::record:        toggleRecord(); break;
         case MenuIds::toStart:       goToStart(); break;
@@ -2481,6 +2500,7 @@ void MainComponent::loadAppSettings()
         // Sin el dato (ajustes de la 1.4.0 o anterior): se trata como una actualización
         lastRunVersion = xml->getStringAttribute ("lastVersion", "0");
         showButtonLabels = xml->getBoolAttribute ("buttonLabels", false);
+        lightModeSaved = xml->getBoolAttribute ("lightMode", false);   // ya aplicado al arrancar (Main.cpp)
         labelsToggle.expanded = showButtonLabels;
     }
 }
@@ -2493,8 +2513,38 @@ void MainComponent::saveAppSettings()
     if (skippedVersion.isNotEmpty())
         xml.setAttribute ("skipVersion", skippedVersion);
     xml.setAttribute ("buttonLabels", showButtonLabels);
+    xml.setAttribute ("lightMode", lightModeSaved);
     xml.setAttribute ("lastVersion", lastRunVersion.isNotEmpty() ? lastRunVersion : Updater::currentVersion());
     xml.writeTo (AppPaths::appSettings());
+}
+
+// Cambia entre modo claro y oscuro en caliente: nueva paleta, colores del aspecto y, en todas las
+// ventanas abiertas, los colores que los componentes tenían puestos con setColour
+void MainComponent::setLightMode (bool on)
+{
+    lightModeSaved = on;
+    saveAppSettings();
+    if (on == Theme::light)
+        return;
+
+    auto changes = Theme::setLight (on);
+    for (auto& c : StripLook::setLight (on))
+        changes.insert (c);
+    lookAndFeel.applyColours();
+    StripLookAndFeel::get().applyColours();
+
+    auto& desktop = juce::Desktop::getInstance();
+    for (int i = 0; i < desktop.getNumComponents(); ++i)
+        if (auto* c = desktop.getComponent (i))
+        {
+            if (auto* w = dynamic_cast<juce::ResizableWindow*> (c))
+                if (auto it = changes.find (w->getBackgroundColour().getARGB()); it != changes.end())
+                    w->setBackgroundColour (juce::Colour (it->second));
+            Theme::remapColours (*c, changes);
+            c->sendLookAndFeelChange();
+            c->repaint();
+        }
+    menuItemsChanged();
 }
 
 // ===================== Marcadores =====================
@@ -2980,7 +3030,7 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
                 if (self == nullptr) return;
                 save ("7-mezclador.png");
                 if (auto* top = self->getTopLevelComponent())
-                    top->setSize (1340, 760);   // ancho mínimo de la ventana
+                    top->setSize (1390, 760);   // ancho mínimo de la ventana
                 juce::Timer::callAfterDelay (500, [self, save]
                 {
                     if (self == nullptr) return;
