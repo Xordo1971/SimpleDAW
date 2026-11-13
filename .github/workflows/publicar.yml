@@ -39,7 +39,7 @@ jobs:
 
   mac:
     needs: version
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
       - name: Compilar (Apple Silicon + Intel)
