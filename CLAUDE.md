@@ -37,6 +37,12 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   Opus); si es el adecuado, responder sin avisos. La calidad va primero; después, gastar poco de los límites.
   Orientación: commits, retoques de colores o textos y preguntas cortas → Haiku o Sonnet; funciones nuevas o
   fallos delicados del motor de audio → Opus.
+- Git (la carpeta es un clon de github.com/Xordo1971/SimpleDAW, sesión de `gh` iniciada como Xordo1971):
+  - Al empezar cada sesión, antes de tocar nada: `git pull`.
+  - Al terminar la sesión (o cuando el usuario dé el trabajo por cerrado): `git add` solo de los archivos del
+    proyecto que se hayan cambiado, `git commit` con un mensaje en español que resuma los cambios, y `git push`.
+    No subir los archivos personales sin seguimiento (Grabaciones/, Presets/, SimpleDAW-*.xml, *.tmp,
+    SimpleDAW.exe, .mp3, .sdpreset sueltos de la raíz).
 
 ## Convenciones
 - Textos con acentos: `tr8 ("...")` (Text.h); nunca `juce::String` directo de un literal no ASCII.
