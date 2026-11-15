@@ -3,6 +3,10 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.8.2
+
+- Nueva tipografía: toda la interfaz (menús, botones, pistas, mezclador, ventanas emergentes) usa ahora Montserrat, con la versión Bold para los textos en negrita y la Regular para el resto. Va incluida en la aplicación, no hace falta instalar nada. Las pantallas de tiempo y tempo conservan su letra de siempre.
+
 ## 1.8.1
 
 - Arranque más seguro con el audio: si no se puede abrir el dispositivo guardado (por ejemplo un driver ASIO de otro fabricante sin su tarjeta conectada), SimpleDAW ya no prueba otros a ciegas. Reintenta una vez, usa el dispositivo por defecto del sistema, avisa de cuál no se pudo abrir y conserva tu configuración guardada hasta que vuelvas a elegir el dispositivo en Audio.
