@@ -1,12 +1,11 @@
 #pragma once
-// Frontal del ampli integrado ("Simpleamp"): el cabezal dibujado por código (AmpPanel.h) con
+// Frontal del ampli integrado ("Simpleamp"): la imagen del cabezal con
 // potenciómetros que giran e interruptores que se mueven de verdad.
 // Se incluye desde Effects.h (solo en la aplicación, no en las pruebas).
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Theme.h"
 #include "Dialogs.h"
 #include "Presets.h"
-#include "AmpPanel.h"
 #if SIMPLEDAW_HAS_BINARYDATA
  #include "BinaryData.h"
 #endif
@@ -14,34 +13,32 @@
 class AmpEditor : public juce::AudioProcessorEditor
 {
 public:
-    // Frontal dibujado por código (AmpPanel.h); se dibuja una sola vez
+    // Imagen del cabezal (Resources/amp-panel.jpg, 1774 x 887, diseño propio del autor)
     static juce::Image loadPanel()
     {
-        constexpr juce::int64 key = 0x53696d706c65616dLL;   // "Simpleam"
-        auto img = juce::ImageCache::getFromHashCode (key);
-        if (! img.isValid())
-        {
-            img = AmpPanelArt::draw();
-            juce::ImageCache::addImageToCache (img, key);
-        }
-        return img;
+       #if SIMPLEDAW_HAS_BINARYDATA
+        int size = 0;
+        if (auto* data = BinaryData::getNamedResource ("amppanel_jpg", size))
+            return juce::ImageCache::getFromMemory (data, size);
+       #endif
+        return {};
     }
 
     explicit AmpEditor (juce::AudioProcessor& p) : juce::AudioProcessorEditor (p), panel (loadPanel())
     {
-        // Potenciómetros (posición del centro en la foto original, 1537 x 649)
+        // Potenciómetros (centro medido en la imagen, 1774 x 887)
         struct K { const char* id; float x; };
-        for (auto k : { K { "presence", 439.0f }, K { "bass", 551.5f }, K { "mid", 664.0f }, K { "treble", 776.5f },
-                        K { "master", 889.5f }, K { "gain", 1001.5f }, K { "cleanVol", 1114.0f },
-                        K { "cleanTreble", 1226.5f }, K { "cleanBass", 1337.5f } })
+        for (auto k : { K { "presence", 507.2f }, K { "bass", 635.7f }, K { "mid", 765.2f }, K { "treble", 894.5f },
+                        K { "master", 1024.2f }, K { "gain", 1152.7f }, K { "cleanVol", 1281.8f },
+                        K { "cleanTreble", 1410.5f }, K { "cleanBass", 1537.7f } })
             if (auto* param = find (k.id))
-                knobs.add (new Knob (*this, *param, { k.x, 514.0f }));
+                knobs.add (new Knob (*this, *param, { k.x, knobY }));
 
         // Interruptores pequeños y selector de canal (limpio - crunch - lead)
         struct S { const char* id; float x, y; };
-        for (auto sw : { S { "fat", 495.5f, 568.5f }, S { "c45", 608.0f, 569.0f }, S { "sat", 720.5f, 569.0f },
-                         S { "voice", 1055.0f, 569.0f }, S { "bright", 1167.0f, 568.5f }, S { "channel", 1279.5f, 569.0f },
-                         S { "power", 292.0f, 516.0f } })
+        for (auto sw : { S { "fat", 571.0f, 686.0f }, S { "c45", 699.5f, 686.0f }, S { "sat", 829.0f, 686.0f },
+                         S { "voice", 1216.0f, 686.5f }, S { "bright", 1346.0f, 686.5f }, S { "channel", 1475.0f, 686.5f },
+                         S { "power", 334.0f, 621.5f } })
             if (auto* param = find (sw.id))
                 switches.add (new Switch (*this, *param, { sw.x, sw.y }, juce::String (sw.id) == "power"));
 
@@ -102,9 +99,9 @@ public:
         showStatus (nullptr);
 
         setResizable (true, true);
-        setResizeLimits (700, (int) (700 * imgH / imgW) + stripH, 1537, (int) imgH + stripH);
-        getConstrainer()->setFixedAspectRatio (922.0 / (389.0 + stripH));
-        setSize (922, 389 + stripH);
+        setResizeLimits (700, (int) (700 * imgH / imgW) + stripH, (int) imgW, (int) imgH + stripH);
+        getConstrainer()->setFixedAspectRatio (922.0 / (922.0 * imgH / imgW + stripH));
+        setSize (922, juce::roundToInt (922.0 * imgH / imgW) + stripH);
     }
 
     void paint (juce::Graphics& g) override
@@ -132,7 +129,7 @@ public:
     {
         // Las piezas interactivas se colocan sobre la foto, en su sitio
         for (auto* k : knobs)
-            k->setBounds (toScreen (juce::Rectangle<float> (k->centre.x - 32.0f, k->centre.y - 32.0f, 64.0f, 64.0f)));
+            k->setBounds (toScreen (juce::Rectangle<float> (k->centre.x - 36.0f, k->centre.y - 36.0f, 72.0f, 72.0f)));
         for (auto* sw : switches)
             sw->setBounds (toScreen (sw->area()));
 
@@ -195,7 +192,8 @@ private:
             });
     }
 
-    static constexpr float imgW = 1537.0f, imgH = 649.0f;
+    static constexpr float imgW = 1774.0f, imgH = 887.0f;
+    static constexpr float knobY = 624.5f;   // altura del centro de los potenciómetros en la imagen
     static constexpr int stripH = 44;
 
     juce::RangedAudioParameter* find (const juce::String& id) const
@@ -265,14 +263,14 @@ private:
         // Escala de 0 a 10 en 300 grados, igual que los números serigrafiados.
         const float norm = (float) k.valueToProportionOfLength (k.getValue());
         const float angle = (norm - 0.5f) * juce::degreesToRadians (300.0f);
-        constexpr float r = 28.5f;
-        static const juce::Point<float> source { 439.0f, 514.0f };   // el de PRESENCE
+        // El círculo girado es el propio mando (algo más pequeño que su borde), así que tapa el original
+        constexpr float r = 32.5f;
+        static const juce::Point<float> source { 507.2f, knobY - 0.3f };   // el de PRESENCE (apunta al 5)
 
         juce::Graphics::ScopedSaveState state (g);
         juce::Path clip;
         clip.addEllipse (k.centre.x - r, k.centre.y - r, r * 2.0f, r * 2.0f);
         g.reduceClipRegion (clip);
-        g.fillAll (juce::Colour (0xffe0c083));   // tapa el dibujo original del panel
         g.drawImageTransformed (panel, juce::AffineTransform::translation (-source.x, -source.y)
                                            .rotated (angle).translated (k.centre.x, k.centre.y));
     }
@@ -293,8 +291,9 @@ private:
 
         juce::Rectangle<float> area() const
         {
-            return power ? juce::Rectangle<float> (268.0f, 488.0f, 48.0f, 56.0f)
-                         : juce::Rectangle<float> (centre.x - 15.0f, centre.y - 15.0f, 30.0f, 30.0f);
+            // El de encendido: la tuerca y la palanca hacia abajo, centrado en la tuerca (se voltea arriba-abajo)
+            return power ? juce::Rectangle<float> (centre.x - 27.0f, centre.y - 36.0f, 54.0f, 72.0f)
+                         : juce::Rectangle<float> (centre.x - 16.0f, centre.y - 16.0f, 32.0f, 32.0f);
         }
 
         void mouseDown (const juce::MouseEvent& e) override
@@ -349,9 +348,12 @@ private:
         const auto ri = r.toNearestInt();
         if (! sw.normal.isValid())
         {
-            sw.normal   = spriteFor (ri, false, false);
-            sw.mirrored = spriteFor (ri, true, false);
-            sw.flipped  = spriteFor (ri, false, true);
+            // Los pequeños usan todos el de FAT, que en la imagen tiene la palanca claramente a la derecha
+            // (en otros, como BITE o SAT, apunta casi de frente y no se vería el cambio)
+            const auto src = sw.power ? ri : juce::Rectangle<float> (571.0f - 16.0f, 686.0f - 16.0f, 32.0f, 32.0f).toNearestInt();
+            sw.normal   = spriteFor (src, false, false);
+            sw.mirrored = spriteFor (src, true, false);
+            sw.flipped  = spriteFor (src, false, true);
         }
 
         if (sw.power)
@@ -360,17 +362,26 @@ private:
             if (sw.value == 0)
             {
                 g.drawImageAt (sw.flipped, ri.getX(), ri.getY());
-                const juce::Rectangle<float> led (336.0f, 499.0f, 32.0f, 33.0f);
+                const juce::Rectangle<float> led (389.0f, 602.0f, 39.0f, 41.0f);
                 g.setColour (juce::Colour (0xff1a0402).withAlpha (0.78f));
                 g.fillRoundedRectangle (led, 2.0f);
+                // ...y su reflejo rojo en la mesa
+                const juce::Point<float> glow (409.0f, 862.0f);
+                const juce::Colour wood (0xffb96825);
+                g.setGradientFill (juce::ColourGradient (wood.withAlpha (0.92f), glow.x, glow.y,
+                                                         wood.withAlpha (0.0f), glow.x + 30.0f, glow.y, true));
+                g.fillEllipse (glow.x - 30.0f, glow.y - 40.0f, 60.0f, 80.0f);
             }
             return;
         }
 
-        // Palanca hacia la derecha (como en el dibujo) = activado / canal Lead
+        // Palanca hacia la derecha = activado / canal Lead
         const int right = sw.numStates - 1;
         if (sw.value == right)
+        {
+            g.drawImageAt (sw.normal, ri.getX(), ri.getY());
             return;
+        }
 
         juce::Graphics::ScopedSaveState state (g);
         if (sw.value == 0)
@@ -387,9 +398,9 @@ private:
         const auto c = sw.centre.translated (0.5f, 0.0f);
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xfff2f2f2), c.x - 1.5f, c.y - 2.0f,
                                                  juce::Colour (0xff3c3c3c), c.x + 3.5f, c.y + 4.0f, true));
-        g.fillEllipse (c.x - 4.5f, c.y - 4.5f, 9.0f, 9.0f);
+        g.fillEllipse (c.x - 5.5f, c.y - 5.5f, 11.0f, 11.0f);
         g.setColour (juce::Colours::black.withAlpha (0.5f));
-        g.drawEllipse (c.x - 4.5f, c.y - 4.5f, 9.0f, 9.0f, 0.6f);
+        g.drawEllipse (c.x - 5.5f, c.y - 5.5f, 11.0f, 11.0f, 0.7f);
     }
 
     void repaintLed()
