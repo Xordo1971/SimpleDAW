@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.10.0
+
+- «Importar audio» (Ctrl/Cmd+I) pone ahora el audio en una pista nueva, desde el principio, y avisa en la barra inferior de a qué pista ha ido (que pasa a ser la pista activa). Así no se pisa por error la pista donde estabas trabajando. Para importar a la pista activa, desde el cursor, hay una opción nueva: «Pista > Importar a la pista activa» (Ctrl/Cmd+Mayús+I).
+- Clic derecho en un marcador > «Repetir esta sección»: activa el ciclo desde ese marcador hasta el siguiente (o hasta el final de lo grabado) para repetir un pasaje sin tocar nada más.
+- La precuenta al grabar puede ser de 1 a 4 compases (clic derecho en el botón del metrónomo) y se guarda con el proyecto.
+
 ## 1.9.0
 
 - La pista activa se ve más oscura (cabecera y carril), para saber a cuál va lo que importas o grabas. Al añadir una pista nueva pasa a ser la activa automáticamente.
