@@ -3189,6 +3189,7 @@ void MainComponent::addTrackWithUndo (bool drum)
     if (engine.isRecording())
         return;
     auto* track = addTrack ({}, drum);
+    selectRegion (*track, -1);   // la pista nueva pasa a ser la activa
     if (drum)
     {
         // Batería nueva: estilo según el compás y 8 compases (A A A C B B B C) desde el compás actual

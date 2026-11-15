@@ -179,6 +179,39 @@ namespace Presets
                  <EFFECT type="Delay"><PARAM id="time" value="550"/><PARAM id="feedback" value="0.5"/>
                    <PARAM id="tone" value="3500"/><PARAM id="mix" value="0.3"/></EFFECT>
                  <EFFECT type="Reverb"><PARAM id="size" value="0.9"/><PARAM id="damping" value="0.3"/><PARAM id="mix" value="0.35"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            // Sonidos de guitarristas concretos (aproximaciones hechas a oído, para retocar al gusto)
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Ry Cooder - Feeling Bad Blues">
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="3"/>
+                   <PARAM id="bass" value="5.5"/><PARAM id="mid" value="7"/><PARAM id="treble" value="3.5"/>
+                   <PARAM id="presence" value="3"/><PARAM id="fat" value="on"/><PARAM id="cabinet" value="1x12"/>
+                   <PARAM id="master" value="-5"/><PARAM id="gate" value="-80"/></EFFECT>
+                 <EFFECT type="Delay"><PARAM id="time" value="110"/><PARAM id="feedback" value="0.12"/>
+                   <PARAM id="tone" value="3000"/><PARAM id="mix" value="0.16"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.3"/><PARAM id="damping" value="0.5"/><PARAM id="mix" value="0.1"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Sultans of Swing">
+                 <EFFECT type="Compresor"><PARAM id="threshold" value="-24"/><PARAM id="ratio" value="3"/>
+                   <PARAM id="attack" value="15"/><PARAM id="release" value="150"/><PARAM id="makeup" value="4"/></EFFECT>
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Limpio"/><PARAM id="cleanVol" value="5.5"/>
+                   <PARAM id="cleanTreble" value="7"/><PARAM id="cleanBass" value="4"/><PARAM id="bright" value="on"/>
+                   <PARAM id="voice" value="off"/><PARAM id="presence" value="6"/><PARAM id="master" value="-4"/>
+                   <PARAM id="cabinet" value="2x12"/><PARAM id="gate" value="-75"/></EFFECT>
+                 <EFFECT type="Ecualizador"><PARAM id="lowcut" value="90"/><PARAM id="low" value="-1"/>
+                   <PARAM id="midfreq" value="500"/><PARAM id="mid" value="-3"/><PARAM id="high" value="2.5"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.45"/><PARAM id="damping" value="0.45"/>
+                   <PARAM id="width" value="0.8"/><PARAM id="mix" value="0.16"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            tr8 (R"P(<SIMPLEDAW_PRESET name="War Raog - Gwendal">
+                 <EFFECT type="Compresor"><PARAM id="threshold" value="-20"/><PARAM id="ratio" value="2.5"/>
+                   <PARAM id="attack" value="20"/><PARAM id="release" value="180"/><PARAM id="makeup" value="3"/></EFFECT>
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="6.5"/>
+                   <PARAM id="bass" value="4.5"/><PARAM id="mid" value="7"/><PARAM id="treble" value="5.5"/>
+                   <PARAM id="presence" value="5"/><PARAM id="master" value="-6"/><PARAM id="cabinet" value="2x12"/>
+                   <PARAM id="gate" value="-62"/></EFFECT>
+                 <EFFECT type="Delay"><PARAM id="time" value="340"/><PARAM id="feedback" value="0.25"/>
+                   <PARAM id="tone" value="4500"/><PARAM id="mix" value="0.16"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.55"/><PARAM id="damping" value="0.45"/><PARAM id="mix" value="0.15"/></EFFECT>
                </SIMPLEDAW_PRESET>)P")
         };
     }
