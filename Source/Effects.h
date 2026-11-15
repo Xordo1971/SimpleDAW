@@ -510,7 +510,7 @@ public:
         treble   = param ("treble", "Agudos", 0.0f, 10.0f, 5.0f);
         presence = param ("presence", "Presencia", 0.0f, 10.0f, 5.0f);
         master   = param ("master", "Volumen", -30.0f, 6.0f, -3.0f, "dB");
-        cabinet  = choice ("cabinet", "Pantalla", { "Sin pantalla", "1x12", "2x12", "4x12" }, 3);
+        cabinet  = choice ("cabinet", "Pantalla", { "Sin pantalla", "1x12", "2x12", "4x12", "IR (archivo)" }, 3);
         gate     = param ("gate", "Puerta de ruido", -90.0f, -30.0f, -72.0f, "dB");
         // Canal limpio con sus propios controles (como un ampli de dos canales)
         cleanVol    = param ("cleanVol", "Volumen (limpio)", 0.0f, 10.0f, 5.0f);
@@ -531,9 +531,40 @@ public:
 
     juce::String presetName;   // último preset cargado (se guarda con el proyecto)
 
+    // Pantalla real: respuesta al impulso (IR) en un archivo de audio (.wav, .aiff, .flac...). Se usa con
+    // la opción "IR (archivo)" de la pantalla. Devuelve false si el archivo no se puede leer.
+    static constexpr int irCabinetIndex = 4;
+    bool loadIr (const juce::File& file)
+    {
+        if (! file.existsAsFile())
+            return false;
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        if (reader == nullptr || reader->lengthInSamples < 16)
+            return false;
+        convolution.loadImpulseResponse (file, juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::yes,
+                                         0, juce::dsp::Convolution::Normalise::yes);
+        irFile = file;
+        irLoaded = true;
+        return true;
+    }
+    bool hasIr() const                { return irLoaded.load(); }
+    juce::File getIrFile() const      { return irFile; }
+
 protected:
-    void writeExtraState (juce::XmlElement& x) override         { if (presetName.isNotEmpty()) x.setAttribute ("presetName", presetName); }
-    void readExtraState (const juce::XmlElement& x) override    { presetName = x.getStringAttribute ("presetName"); }
+    void writeExtraState (juce::XmlElement& x) override
+    {
+        if (presetName.isNotEmpty()) x.setAttribute ("presetName", presetName);
+        if (irLoaded.load()) x.setAttribute ("irFile", irFile.getFullPathName());
+    }
+    void readExtraState (const juce::XmlElement& x) override
+    {
+        presetName = x.getStringAttribute ("presetName");
+        const auto path = x.getStringAttribute ("irFile");
+        if (path.isNotEmpty())
+            loadIr (juce::File (path));   // si el archivo ya no está, la pantalla queda sin IR
+    }
 public:
 
 private:
@@ -545,6 +576,8 @@ private:
     {
         oversampling = std::make_unique<juce::dsp::Oversampling<float>> (2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true);
         oversampling->initProcessing (spec.maximumBlockSize);
+        convolution.prepare (spec);
+        convolution.reset();
         for (auto& ch : chains) { for (auto& f : ch.pre) f.reset(); for (auto& f : ch.inter) f.reset(); for (auto& f : ch.tone) f.reset(); for (auto& f : ch.cab) f.reset(); }
         gateEnv[0] = gateEnv[1] = 0.0f;
         gateGain[0] = gateGain[1] = 1.0f;
@@ -623,7 +656,8 @@ private:
         const int ch = channel->getIndex();
         const float g = ch == 0 ? cleanVol->get() : gain->get();
         const float satDb = sat->get() ? 6.0f : 0.0f;
-        const bool useCab = cabinet->getIndex() > 0;
+        const bool useIr = cabinet->getIndex() == irCabinetIndex && irLoaded.load();
+        const bool useCab = cabinet->getIndex() > 0 && cabinet->getIndex() < irCabinetIndex;
 
         // 1. Puerta de ruido y filtros previos
         const float threshold = gate->get() <= -89.0f ? 0.0f : juce::Decibels::decibelsToGain (gate->get());
@@ -699,8 +733,15 @@ private:
                 for (auto& f : chain.tone) x = f.processSample (x);
                 if (useCab)
                     for (auto& f : chain.cab) x = f.processSample (x);
-                d[i] = x * out;
+                d[i] = useIr ? x : x * out;   // con IR, el volumen se aplica después de la convolución
             }
+        }
+
+        if (useIr)
+        {
+            juce::dsp::AudioBlock<float> irBlock (buffer.getArrayOfWritePointers(), 2, (size_t) n);
+            convolution.process (juce::dsp::ProcessContextReplacing<float> (irBlock));
+            buffer.applyGain (out);
         }
     }
 
@@ -723,6 +764,9 @@ private:
     juce::AudioParameterFloat *gain, *bass, *mid, *treble, *presence, *master, *gate, *cleanVol, *cleanTreble, *cleanBass;
     juce::AudioParameterBool *fat, *c45, *sat, *voice, *bright, *power;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
+    juce::dsp::Convolution convolution;
+    juce::File irFile;
+    std::atomic<bool> irLoaded { false };
     std::array<Chain, 2> chains;
     std::array<float, 13> lastKey {};
     float gateEnv[2] {}, gateGain[2] { 1.0f, 1.0f };
@@ -730,12 +774,203 @@ private:
     int gateHold[2] {};
 };
 
+// ---------------------------------------------------------------- Trémolo
+class TremoloEffect : public BuiltInEffect
+{
+public:
+    TremoloEffect() : BuiltInEffect ("Tremolo")
+    {
+        rate   = param ("rate", "Velocidad", 0.1f, 15.0f, 4.5f, "Hz", 4.0f);
+        depth  = param ("depth", "Profundidad", 0.0f, 1.0f, 0.6f);
+        shape  = choice ("shape", "Forma", { "Seno", "Triangular", "Cuadrada suave" }, 0);
+        stereo = toggle ("stereo", tr8 ("Estéreo (auto-pan)"), false);
+    }
+
+private:
+    void prepare (const juce::dsp::ProcessSpec&) override { phase = 0.0f; }
+
+    // fase 0..1 -> 0..1
+    static float wave (int kind, float ph)
+    {
+        constexpr float twoPi = juce::MathConstants<float>::twoPi;
+        switch (kind)
+        {
+            case 1:  return ph < 0.5f ? ph * 2.0f : 2.0f - ph * 2.0f;
+            case 2:  return 0.5f + 0.5f * std::tanh (4.0f * std::sin (twoPi * ph)) / std::tanh (4.0f);
+            default: return 0.5f - 0.5f * std::cos (twoPi * ph);
+        }
+    }
+
+    void process (juce::AudioBuffer<float>& buffer) override
+    {
+        const float inc = rate->get() / (float) sampleRate;
+        const float d = depth->get();
+        const int kind = shape->getIndex();
+        const bool wide = stereo->get();
+        auto* l = buffer.getWritePointer (0);
+        auto* r = buffer.getWritePointer (1);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            const float a = wave (kind, phase);
+            const float b = wide ? wave (kind, phase >= 0.5f ? phase - 0.5f : phase + 0.5f) : a;   // auto-pan: un lado sube cuando el otro baja
+            l[i] *= 1.0f - d * a;
+            r[i] *= 1.0f - d * b;
+            phase += inc;
+            if (phase >= 1.0f)
+                phase -= 1.0f;
+        }
+    }
+
+    juce::AudioParameterFloat *rate, *depth;
+    juce::AudioParameterChoice* shape;
+    juce::AudioParameterBool* stereo;
+    float phase = 0.0f;
+};
+
+// ---------------------------------------------------------------- Wah
+// Filtro paso banda que barre las frecuencias: con el pedal a mano (parámetro Pedal), solo (LFO)
+// o siguiendo cómo se toca (más fuerte = más abierto).
+class WahEffect : public BuiltInEffect
+{
+public:
+    WahEffect() : BuiltInEffect ("Wah")
+    {
+        mode  = choice ("mode", "Modo", { "Pedal", "Auto LFO", "Auto ataque" }, 0);
+        pedal = param ("pedal", "Pedal", 0.0f, 1.0f, 0.5f);
+        rate  = param ("rate", "Velocidad (Auto LFO)", 0.1f, 8.0f, 1.5f, "Hz", 1.5f);
+        sens  = param ("sens", "Sensibilidad (Auto ataque)", 0.0f, 1.0f, 0.6f);
+        q     = param ("q", "Resonancia", 1.0f, 10.0f, 5.0f);
+        mix   = param ("mix", "Mezcla", 0.0f, 1.0f, 1.0f);
+    }
+
+private:
+    void prepare (const juce::dsp::ProcessSpec& spec) override
+    {
+        auto mono = spec;
+        mono.numChannels = 1;
+        for (auto& f : filt)
+        {
+            f.prepare (mono);
+            f.setType (juce::dsp::StateVariableTPTFilterType::bandpass);
+            f.reset();
+        }
+        lfo = 0.0f;
+        env = 0.0f;
+    }
+
+    void process (juce::AudioBuffer<float>& buffer) override
+    {
+        const int kind = mode->getIndex();
+        const float qv = q->get();
+        const float wet = mix->get();
+        const float lfoInc = rate->get() / (float) sampleRate;
+        const float sensV = sens->get();
+        const float envAtk = 1.0f - std::exp (-1.0f / (0.005f * (float) sampleRate));
+        const float envRel = 1.0f - std::exp (-1.0f / (0.12f * (float) sampleRate));
+        auto* l = buffer.getWritePointer (0);
+        auto* r = buffer.getWritePointer (1);
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            float pos = pedal->get();
+            if (kind == 1)
+            {
+                pos = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * lfo);
+                lfo += lfoInc;
+                if (lfo >= 1.0f) lfo -= 1.0f;
+            }
+            else if (kind == 2)
+            {
+                const float level = juce::jmax (std::abs (l[i]), std::abs (r[i]));
+                env += (level > env ? envAtk : envRel) * (level - env);
+                pos = juce::jlimit (0.0f, 1.0f, env * sensV * 6.0f);
+            }
+
+            // Cada 8 muestras se recalcula la frecuencia (de ~350 Hz a ~2,2 kHz, a lo largo de la carrera del pedal)
+            if ((i & 7) == 0)
+            {
+                const float freq = 350.0f * std::pow (2200.0f / 350.0f, pos);
+                for (auto& f : filt)
+                {
+                    f.setCutoffFrequency (freq);
+                    f.setResonance (qv);
+                }
+            }
+
+            const float wl = filt[0].processSample (0, l[i]) / qv;   // /Q: el paso banda de JUCE puede pasar de 0 dB
+            const float wr = filt[1].processSample (0, r[i]) / qv;
+            l[i] = mixDryWet (l[i], wl * 1.5f, wet);
+            r[i] = mixDryWet (r[i], wr * 1.5f, wet);
+        }
+    }
+
+    juce::AudioParameterChoice* mode;
+    juce::AudioParameterFloat *pedal, *rate, *sens, *q, *mix;
+    std::array<juce::dsp::StateVariableTPTFilter<float>, 2> filt;
+    float lfo = 0.0f, env = 0.0f;
+};
+
+// ---------------------------------------------------------------- Puerta de ruido
+class GateEffect : public BuiltInEffect
+{
+public:
+    GateEffect() : BuiltInEffect ("Puerta de ruido")
+    {
+        threshold = param ("threshold", "Umbral", -80.0f, -20.0f, -55.0f, "dB");
+        attack    = param ("attack", "Ataque", 0.1f, 50.0f, 2.0f, "ms", 5.0f);
+        hold      = param ("hold", "Mantener", 0.0f, 500.0f, 60.0f, "ms", 80.0f);
+        release   = param ("release", tr8 ("Relajación"), 5.0f, 1000.0f, 120.0f, "ms", 150.0f);
+        range     = param ("range", "Reduccion", -80.0f, 0.0f, -80.0f, "dB");
+    }
+
+private:
+    void prepare (const juce::dsp::ProcessSpec&) override { env = 0.0f; gain = 1.0f; open = true; holdLeft = 0; }
+
+    void process (juce::AudioBuffer<float>& buffer) override
+    {
+        const float thr = juce::Decibels::decibelsToGain (threshold->get());
+        const float floorGain = range->get() <= -79.0f ? 0.0f : juce::Decibels::decibelsToGain (range->get());
+        const float atk = std::exp (-1.0f / (juce::jmax (0.1f, attack->get()) * 0.001f * (float) sampleRate));
+        const float rel = std::exp (-1.0f / (juce::jmax (5.0f, release->get()) * 0.001f * (float) sampleRate));
+        const float envRel = std::exp (-1.0f / (0.05f * (float) sampleRate));
+        const int holdSamples = (int) (hold->get() * 0.001f * (float) sampleRate);
+        auto* l = buffer.getWritePointer (0);
+        auto* r = buffer.getWritePointer (1);
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            // Una sola puerta para los dos canales, para no descentrar la imagen estéreo
+            const float level = juce::jmax (std::abs (l[i]), std::abs (r[i]));
+            env = level > env ? level : env * envRel;
+            if (env >= thr)
+            {
+                open = true;
+                holdLeft = holdSamples;
+            }
+            else if (env < thr * 0.5f)   // histéresis de 6 dB: no "tartamudea"
+            {
+                if (holdLeft > 0) --holdLeft;
+                else open = false;
+            }
+            const float target = open ? 1.0f : floorGain;
+            gain = target + (gain - target) * (target > gain ? atk : rel);
+            l[i] *= gain;
+            r[i] *= gain;
+        }
+    }
+
+    juce::AudioParameterFloat *threshold, *attack, *hold, *release, *range;
+    float env = 0.0f, gain = 1.0f;
+    bool open = true;
+    int holdLeft = 0;
+};
+
 // ---------------------------------------------------------------- Catálogo
 namespace BuiltInEffects
 {
     inline juce::StringArray names()
     {
-        return { "Delay", "Reverb", "Chorus", "Flanger", "Phaser", "Pitch", "Ecualizador", "Compresor", "Overdrive", "Ampli" };
+        return { "Delay", "Reverb", "Chorus", "Flanger", "Phaser", "Pitch", "Ecualizador", "Compresor", "Overdrive", "Ampli", "Tremolo", "Wah", "Puerta de ruido" };
     }
 
     inline std::unique_ptr<juce::AudioProcessor> create (int index)
@@ -752,6 +987,9 @@ namespace BuiltInEffects
             case 7: return std::make_unique<CompressorEffect>();
             case 8: return std::make_unique<OverdriveEffect>();
             case 9: return std::make_unique<AmpEffect>();
+            case 10: return std::make_unique<TremoloEffect>();
+            case 11: return std::make_unique<WahEffect>();
+            case 12: return std::make_unique<GateEffect>();
             default: return nullptr;
         }
     }

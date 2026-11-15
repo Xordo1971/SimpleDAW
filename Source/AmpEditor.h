@@ -52,8 +52,21 @@ public:
             cabinetBox.addItemList (cab->getAllValueStrings(), 1);
             cabinetAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (*cab, cabinetBox);
         }
-        cabinetBox.setTooltip ("Pantalla (altavoz) simulada");
+        cabinetBox.setTooltip (tr8 ("Pantalla (altavoz): simuladas, o «IR (archivo)» para usar una real"));
+        // Al elegir «IR (archivo)» sin tener ninguna cargada, se pide el archivo
+        cabinetBox.onChange = [this]
+        {
+            auto* amp = dynamic_cast<AmpEffect*> (&processor);
+            if (amp != nullptr && cabinetBox.getSelectedItemIndex() == AmpEffect::irCabinetIndex && ! amp->hasIr())
+                chooseIr();
+        };
         addAndMakeVisible (cabinetBox);
+
+        irButton.setButtonText ("IR...");
+        irButton.setTooltip (tr8 ("Cargar una pantalla real: un archivo de respuesta al impulso (.wav, .aiff o .flac)"));
+        irButton.onClick = [this] { chooseIr(); };
+        addAndMakeVisible (irButton);
+        updateIrTooltip();
 
         if (auto* gate = find ("gate"))
         {
@@ -125,13 +138,59 @@ public:
         strip.removeFromLeft (18);
         cabinetLabel.setBounds (strip.removeFromLeft (66));
         cabinetBox.setBounds (strip.removeFromLeft (108).reduced (0, 2));
-        strip.removeFromLeft (18);
+        strip.removeFromLeft (4);
+        irButton.setBounds (strip.removeFromLeft (40).reduced (0, 2));
+        strip.removeFromLeft (14);
         gateLabel.setBounds (strip.removeFromLeft (108));
         gateSlider.setBounds (strip.removeFromLeft (170));
         status.setBounds (strip.withTrimmedLeft (8));
     }
 
 private:
+    void updateIrTooltip()
+    {
+        auto* amp = dynamic_cast<AmpEffect*> (&processor);
+        irButton.setTooltip (amp != nullptr && amp->hasIr()
+            ? tr8 ("IR cargada: ") + amp->getIrFile().getFileName() + tr8 (". Pulsa para cargar otra (.wav, .aiff o .flac)")
+            : tr8 ("Cargar una pantalla real: un archivo de respuesta al impulso (.wav, .aiff o .flac)"));
+    }
+
+    void chooseIr()
+    {
+        auto* amp = dynamic_cast<AmpEffect*> (&processor);
+        if (amp == nullptr)
+            return;
+        auto start = amp->hasIr() ? amp->getIrFile().getParentDirectory()
+                                  : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+        irChooser = std::make_unique<juce::FileChooser> (tr8 ("Cargar una pantalla (IR)"), start, "*.wav;*.aif;*.aiff;*.flac");
+        juce::Component::SafePointer<AmpEditor> self (this);
+        irChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [self, amp] (const juce::FileChooser& fc)
+            {
+                if (self == nullptr)
+                    return;
+                const auto file = fc.getResult();
+                if (file == juce::File())
+                {
+                    // Cancelado: si se había elegido «IR (archivo)» sin tener una, se vuelve a la pantalla de antes
+                    if (! amp->hasIr())
+                        if (auto* cab = self->find ("cabinet"))
+                            if (cab->convertFrom0to1 (cab->getValue()) > (float) AmpEffect::irCabinetIndex - 0.5f)
+                                cab->setValueNotifyingHost (cab->convertTo0to1 (3.0f));
+                    return;
+                }
+                if (! amp->loadIr (file))
+                {
+                    Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Pantalla (IR)",
+                                   tr8 ("No se pudo leer ese archivo. Usa un .wav, .aiff o .flac con la respuesta al impulso."));
+                    return;
+                }
+                if (auto* cab = self->find ("cabinet"))
+                    cab->setValueNotifyingHost (cab->convertTo0to1 ((float) AmpEffect::irCabinetIndex));
+                self->updateIrTooltip();
+            });
+    }
+
     static constexpr float imgW = 1537.0f, imgH = 649.0f;
     static constexpr int stripH = 44;
 
@@ -505,8 +564,8 @@ private:
     juce::ComboBox cabinetBox;
     juce::Slider gateSlider;
     juce::Label presetLabel, cabinetLabel, gateLabel, status;
-    juce::TextButton presetButton;
-    std::unique_ptr<juce::FileChooser> chooser;
+    juce::TextButton presetButton, irButton;
+    std::unique_ptr<juce::FileChooser> chooser, irChooser;
     std::unique_ptr<juce::ComboBoxParameterAttachment> cabinetAttachment;
     std::unique_ptr<juce::SliderParameterAttachment> gateAttachment;
 
