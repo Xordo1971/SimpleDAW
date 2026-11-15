@@ -102,7 +102,8 @@ public:
 private:
     // Pistas
     Track* addTrack (const juce::String& name = {}, bool drum = false);
-    void chooseFilesToImport();
+    void chooseFilesToImport (bool toActiveTrack = false);   // por defecto, a una pista nueva
+    void showNotice (const juce::String& text);              // aviso breve en la barra inferior
     void doImport (const juce::StringArray& files, Track* target, juce::int64 position, bool forceMono);
     void toggleEditor();
 

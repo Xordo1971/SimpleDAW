@@ -363,6 +363,8 @@ private:
 
         juce::PopupMenu m;
         m.addSectionHeader (timeline.markers[(size_t) index].name);
+        m.addItem (4, tr8 ("Repetir esta sección (ciclo hasta el siguiente marcador)"));
+        m.addSeparator();
         m.addSubMenu ("Renombrar", names);
         m.addItem (3, "Borrar marcador");
 
@@ -386,6 +388,24 @@ private:
             {
                 markers.erase (it);
                 self->markersChanged (false);
+            }
+            else if (r == 4)
+            {
+                // Ciclo desde este marcador hasta el siguiente (o hasta el final de lo grabado)
+                auto& en = self->engine;
+                const auto next = it + 1;
+                const auto from = it->pos;
+                const auto to = next != markers.end() ? next->pos : en.getContentEndSamples();
+                if (to - from > 1000)
+                {
+                    en.loopStart = from;
+                    en.loopEnd = to;
+                    en.loopOn = true;
+                    en.punchOn = false;
+                    if (! en.isRecording())
+                        en.setPosition (from);
+                    self->changed();
+                }
             }
             else if (r == 2)
             {

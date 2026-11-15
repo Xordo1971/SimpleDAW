@@ -430,7 +430,8 @@ public:
     std::atomic<double> bpm { 120.0 };
     std::atomic<int> sigNum { 4 }, sigDen { 4 };    // 3/4, 4/4, 6/8...
     std::atomic<bool> metronomeOn { false };
-    std::atomic<bool> countInOn { true };           // un compás de precuenta al grabar
+    std::atomic<bool> countInOn { true };           // precuenta al grabar
+    std::atomic<int> countInBars { 1 };             // compases de precuenta (1 a 4)
     std::atomic<float> metronomeVolume { 0.7f };
 
     // Duración de una parte (la figura del denominador) y de un compás, en muestras
@@ -624,7 +625,7 @@ public:
         recordMode = (int) mode;
         recordStartPosition = transportStart;
         // Precuenta: el transporte arranca un compás antes
-        position = transportStart - (countInOn.load() ? bar : 0);
+        position = transportStart - (countInOn.load() ? bar * juce::jlimit (1, 4, countInBars.load()) : 0);
         state = recording;
         return (int) pending.size();
     }
