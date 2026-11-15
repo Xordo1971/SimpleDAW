@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.0.0
+
+- Velocidad de práctica: junto al afinador hay un selector de velocidad (del 100 % al 50 %). Toda la reproducción va más despacio sin cambiar el tono y sin tocar el audio, para sacar solos poco a poco. La guitarra que entra por la tarjeta suena en tiempo real; el metrónomo y la batería siguen la velocidad. Al elegir una velocidad, cada audio se prepara en segundo plano unos segundos (la barra inferior lo indica). Por debajo del 100 % no se puede grabar, y al exportar la mezcla siempre sale al 100 %.
+- Tomas sin ciclo: si vuelves a grabar empezando exactamente donde empieza una región de la pista (desde un marcador o desde el inicio), lo nuevo se guarda como otra toma de esa región y se elige con clic derecho, igual que las tomas de la grabación en ciclo. Si empiezas en otro punto, queda encima como siempre.
+- Presets del ampli: favoritos (salen arriba del menú, con una estrella), carpetas para organizarlos (se elige la carpeta al guardar) y «Exportar para compartir...», que guarda el ajuste actual donde quieras para mandárselo a otra persona.
+
 ## 1.11.0
 
 - Pantallas reales en el ampli: la opción «Pantalla» tiene ahora «IR (archivo)», y un botón «IR...» para cargar una respuesta al impulso (.wav, .aiff o .flac) de un altavoz o una pantalla de verdad. Se guarda con el proyecto; si el archivo se mueve o se borra, la pantalla queda sin IR.
