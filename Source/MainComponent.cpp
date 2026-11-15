@@ -1380,6 +1380,10 @@ void MainComponent::doImport (const juce::StringArray& files, Track* target, juc
             addTrackWithUndo();
             t = &trackComponents.getLast()->getTrack();
             t->name = f.getFileNameWithoutExtension();
+            // Un audio importado (backing track, sonido...) no escucha ninguna entrada de la tarjeta
+            t->inputChannel = -1;
+            if (auto* tc = componentFor (t))
+                tc->setInputChannels (getActiveInputNames());
         }
         lastRegion = engine.addRegion (*t, clip, position);
         {
