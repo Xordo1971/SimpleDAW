@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.0.1
+
+- Frontal nuevo del ampli Simpleamp, con un diseño propio. Los mandos giran y las palancas se mueven sobre la imagen nueva; al apagarlo, la palanca de POWER sube y el piloto se apaga.
+- Arreglo: en Windows las palancas del ampli (FAT, BITE, SAT, VOICE, BRIGHT, CHANNEL y POWER) no se veían cambiar de posición, aunque el sonido sí cambiaba.
+- Nombres más claros: el interruptor C45 pasa a llamarse BITE y el selector de canal muestra «Limpio», «Crunch» o «Lead». Los presets y proyectos guardados siguen funcionando igual. El preset de fábrica «Rock (BE + C45)» se llama ahora «Rock (crunch + bite)».
+
 ## 2.0.0
 
 - Velocidad de práctica: junto al afinador hay un selector de velocidad (del 100 % al 50 %). Toda la reproducción va más despacio sin cambiar el tono y sin tocar el audio, para sacar solos poco a poco. La guitarra que entra por la tarjeta suena en tiempo real; el metrónomo y la batería siguen la velocidad. Al elegir una velocidad, cada audio se prepara en segundo plano unos segundos (la barra inferior lo indica). Por debajo del 100 % no se puede grabar, y al exportar la mezcla siempre sale al 100 %.
