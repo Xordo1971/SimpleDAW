@@ -126,6 +126,53 @@ namespace Presets
         return folder().getChildFile (juce::File::createLegalFileName (name.trim()) + extension());
     }
 
+    // ---------- Carpetas (un nivel: subcarpetas dentro de la carpeta de presets) ----------
+    inline juce::Array<juce::File> userFolders()
+    {
+        auto dirs = folder().findChildFiles (juce::File::findDirectories, false);
+        std::sort (dirs.begin(), dirs.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        return dirs;
+    }
+
+    inline juce::Array<juce::File> presetsIn (const juce::File& dir)
+    {
+        auto files = dir.findChildFiles (juce::File::findFiles, false, "*" + extension());
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        return files;
+    }
+
+    // dir: la carpeta de presets o una de sus subcarpetas
+    inline juce::File fileForName (const juce::String& name, const juce::File& dir)
+    {
+        return dir.getChildFile (juce::File::createLegalFileName (name.trim()) + extension());
+    }
+
+    // ---------- Favoritos (por nombre del preset; se guardan en favoritos.txt, en la carpeta de presets) ----------
+    inline juce::File favoritesFile() { return folder().getChildFile ("favoritos.txt"); }
+
+    inline juce::StringArray favorites()
+    {
+        juce::StringArray names;
+        names.addLines (favoritesFile().loadFileAsString());
+        names.trim();
+        names.removeEmptyStrings();
+        names.removeDuplicates (false);
+        return names;
+    }
+
+    inline bool isFavorite (const juce::String& name) { return favorites().contains (name.trim()); }
+
+    inline void setFavorite (const juce::String& name, bool on)
+    {
+        auto names = favorites();
+        names.removeString (name.trim());
+        if (on)
+            names.add (name.trim());
+        favoritesFile().replaceWithText (names.joinIntoString ("\n"));
+    }
+
     // ---------- Presets de fábrica ----------
     inline juce::StringArray factoryXml()
     {

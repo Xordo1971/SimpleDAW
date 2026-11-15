@@ -52,6 +52,15 @@ MainComponent::MainComponent()
     setupButton (zoomOutButton,  [this] { zoom (1.0 / 1.5); },    "Alejar");
     setupButton (zoomInButton,   [this] { zoom (1.5); },          "Acercar");
 
+    // Velocidad de práctica
+    for (int pct : { 100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50 })
+        speedBox.addItem (juce::String (pct) + " %", pct);
+    speedBox.setSelectedId (100, juce::dontSendNotification);
+    speedBox.setTooltip (tr8 ("Velocidad de práctica: reproduce más despacio sin cambiar el tono (no cambia el audio). "
+                              "Por debajo del 100 % no se puede grabar."));
+    speedBox.onChange = [this] { setPracticeSpeed (speedBox.getSelectedId() / 100.0); };
+    addAndMakeVisible (speedBox);
+
     // Botones solo con icono; el nombre sale debajo si se despliega la franja inferior de la barra
     for (auto* b : { &addTrackButton, &audioButton, &mixerButton, &tunerButton, &pluginsButton, &importButton, &editorButton })
         b->setIconLabel ({});
@@ -210,6 +219,8 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    ++speedGeneration;                 // las copias de velocidad que se estén calculando se abandonan
+    speedPool.removeAllJobs (true, 10000);
     stopTimer();
     autosaveTimer.stopTimer();
     drumEditorWindow = nullptr;
@@ -354,33 +365,142 @@ void MainComponent::toggleRecord()
         return;
     }
 
+    if (engine.isPracticeSlow())
+    {
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, tr8 ("Velocidad de práctica"),
+            tr8 ("Para grabar, vuelve a poner la velocidad al 100 % (el selector de velocidad, junto al afinador)."));
+        return;
+    }
+
     if (engine.startRecording (AppPaths::recordingsFolder()) == 0)
         Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Nada que grabar",
             tr8 ("Arma al menos una pista (botón R) que tenga una entrada seleccionada."));
+}
+
+// ===================== Velocidad de práctica =====================
+
+void MainComponent::setPracticeSpeed (double speed)
+{
+    if (engine.isRecording())
+    {
+        speedBox.setSelectedId (juce::roundToInt (engine.getPracticeSpeed() * 100.0), juce::dontSendNotification);
+        return;
+    }
+    ++speedGeneration;                  // lo que se esté calculando para otra velocidad se abandona
+    speedPool.removeAllJobs (true, 0);
+    slowPending.clear();
+
+    engine.setPracticeSpeed (speed);
+    if (! engine.isPracticeSlow())
+        engine.clearSlowCopies();
+    else
+        prepareSlowCopies();
+    refreshDeviceInfo();
+}
+
+void MainComponent::prepareSlowCopies()
+{
+    if (! engine.isPracticeSlow())
+        return;
+    const double speed = engine.getPracticeSpeed();
+    const int generation = speedGeneration.load();
+    std::atomic<int>* current = &speedGeneration;   // el destructor espera a los trabajos antes de destruirlo
+    juce::Component::SafePointer<MainComponent> self (this);
+    bool added = false;
+
+    for (auto& clip : engine.clipsNeedingSlowCopy (speed))
+    {
+        if (! slowPending.insert (clip.get()).second)
+            continue;   // ya está en marcha
+        added = true;
+        speedPool.addJob ([self, clip, speed, generation, current]
+        {
+            // Phase vocoder (el mismo de «Cambiar velocidad»), canal a canal
+            auto slow = std::make_shared<juce::AudioBuffer<float>>();
+            const int channels = clip->getNumChannels();
+            const int len = (int) clip->getLength();
+            std::vector<float> out;
+            bool ok = true;
+            for (int ch = 0; ch < channels && ok; ++ch)
+            {
+                ok = PitchShifter::changeSpeed (clip->audio.getReadPointer (ch), len, speed, out,
+                                                [current, generation] (double) { return current->load() == generation; });
+                if (ok)
+                {
+                    if (ch == 0)
+                        slow->setSize (channels, (int) out.size());
+                    slow->copyFrom (ch, 0, out.data(), juce::jmin (slow->getNumSamples(), (int) out.size()));
+                }
+            }
+            juce::MessageManager::callAsync ([self, clip, slow, speed, generation, ok]
+            {
+                if (self == nullptr)
+                    return;
+                self->slowPending.erase (clip.get());
+                if (ok && generation == self->speedGeneration.load())
+                    self->engine.setSlowCopy (clip, slow, speed);
+                self->refreshDeviceInfo();
+            });
+        });
+    }
+    if (added)
+        refreshDeviceInfo();
 }
 
 void MainComponent::stopTransport()
 {
     const bool wasRecording = engine.isRecording();
 
-    // Regiones que había antes de parar (para saber cuáles son nuevas)
-    std::map<Track*, size_t> before;
+    // Regiones que había antes de parar (para saber cuáles son nuevas y a cuáles se les ha añadido una toma)
+    std::map<Track*, std::vector<Region>> before;
     if (wasRecording)
         for (auto* tc : trackComponents)
-            before[&tc->getTrack()] = tc->getTrack().regions.size();
+            before[&tc->getTrack()] = tc->getTrack().regions;
 
     engine.stop();
 
     if (wasRecording)
     {
-        std::vector<std::pair<Track*, Region>> added;
-        for (auto& [t, count] : before)
-            for (size_t i = count; i < t->regions.size(); ++i)
-                added.push_back ({ t, t->regions[i] });
-        if (! added.empty())
+        struct Change { Track* track; Region before, after; bool isNew; };
+        std::vector<Change> changes;
+        for (auto& entry : before)
+        {
+            Track* t = entry.first;
+            const auto& old = entry.second;
+            for (auto& r : t->regions)
+            {
+                auto prev = std::find_if (old.begin(), old.end(), [&r] (const Region& o) { return o.id == r.id; });
+                if (prev == old.end())
+                    changes.push_back ({ t, Region(), r, true });
+                else if (prev->clip != r.clip || prev->takes.size() != r.takes.size())
+                    changes.push_back ({ t, *prev, r, false });   // nueva toma en una región que ya estaba
+            }
+        }
+        if (! changes.empty())
             recordUndo (tr8 ("Grabación"),
-                [this, added] { for (auto& [t, r] : added) engine.takeRegion (*t, r.id); },
-                [this, added] { for (auto& [t, r] : added) engine.putRegion (*t, r, -1); });
+                [this, changes]
+                {
+                    for (auto& c : changes)
+                    {
+                        const auto taken = engine.takeRegion (*c.track, c.after.id);
+                        if (! c.isNew && taken.second >= 0)
+                            engine.putRegion (*c.track, c.before, taken.second);
+                    }
+                },
+                [this, changes]
+                {
+                    for (auto& c : changes)
+                    {
+                        if (c.isNew)
+                            engine.putRegion (*c.track, c.after, -1);
+                        else
+                        {
+                            const auto taken = engine.takeRegion (*c.track, c.after.id);
+                            if (taken.second >= 0)
+                                engine.putRegion (*c.track, c.after, taken.second);
+                        }
+                    }
+                });
     }
 
     if (wasRecording && engine.takeLostSamples())
@@ -494,6 +614,13 @@ void MainComponent::repaintTimeline()
 
 void MainComponent::timerCallback()
 {
+    // Velocidad de práctica: audio nuevo (importado, editado...) que aún no tiene su copia estirada
+    if (engine.isPracticeSlow() && ++slowCheckCounter >= 15)
+    {
+        slowCheckCounter = 0;
+        prepareSlowCopies();
+    }
+
     // ¿Algún efecto se ha desbocado? El motor ya lo ha silenciado y desactivado: avisamos
     {
         Track* t = nullptr;
@@ -604,7 +731,11 @@ void MainComponent::refreshDeviceInfo()
 
         deviceInfo.setText (dev->getTypeName() + "  |  " + dev->getName()
                               + "  |  " + juce::String (sr, 0) + " Hz"
-                              + "  |  buffer " + juce::String (buffer) + " (" + juce::String (ms, 1) + " ms)",
+                              + "  |  buffer " + juce::String (buffer) + " (" + juce::String (ms, 1) + " ms)"
+                              + (engine.isPracticeSlow()
+                                    ? "  |  " + tr8 ("Velocidad de práctica ") + juce::String (juce::roundToInt (engine.getPracticeSpeed() * 100.0)) + " %"
+                                        + (slowPending.empty() ? juce::String() : tr8 (" (preparando ") + juce::String ((int) slowPending.size()) + tr8 (" audio(s)...)"))
+                                    : juce::String()),
                             juce::dontSendNotification);
     }
     else
@@ -727,7 +858,8 @@ void MainComponent::resized()
     // el transporte y el ciclo, y a su derecha el metrónomo y el afinador.
     // Si la ventana es tan estrecha que no puede ir centrada, se arrima lo justo a la derecha.
     const int bw = 44, gap = 4, sideGap = 14;
-    const int transportW = 5 * bw + 4 * gap, rightW = 3 * bw + 2 * gap;
+    const int speedW = 76;
+    const int transportW = 5 * bw + 4 * gap, rightW = 3 * bw + 3 * gap + speedW;
     const int centreX = getWidth() / 2;
     const int leftLimit = toolbar.getX() + transportW + sideGap;
     const int rightLimit = toolbar.getRight() - rightW - sideGap;
@@ -755,7 +887,8 @@ void MainComponent::resized()
     auto right = toolbar.withLeft (lcd.getRight() + sideGap).withWidth (rightW);
     metronomeButton.setBounds (right.removeFromLeft (bw)); right.removeFromLeft (gap);
     tunerButton.setBounds     (right.removeFromLeft (bw)); right.removeFromLeft (gap);
-    themeButton.setBounds     (right.removeFromLeft (bw));
+    themeButton.setBounds     (right.removeFromLeft (bw)); right.removeFromLeft (gap);
+    speedBox.setBounds        (right.removeFromLeft (speedW).withSizeKeepingCentre (speedW, 28));
 
     masterStrip->setBounds (area.removeFromLeft (ChannelStrip::stripWidth));
     area.removeFromLeft (3);

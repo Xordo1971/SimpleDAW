@@ -428,38 +428,99 @@ private:
     {
         juce::PopupMenu m;
         const auto factory = Presets::factoryXml();
-        juce::PopupMenu fm;
+        juce::StringArray factoryNames;
         for (int i = 0; i < factory.size(); ++i)
-            if (auto x = Presets::factory (i))
-                fm.addItem (100 + i, x->getStringAttribute ("name"));
+        {
+            auto x = Presets::factory (i);
+            factoryNames.add (x != nullptr ? x->getStringAttribute ("name") : juce::String());
+        }
+
+        // Todos los presets propios en una lista (primero los sueltos, luego los de cada carpeta)
+        juce::Array<juce::File> user = Presets::presetsIn (Presets::folder());
+        const auto folders = Presets::userFolders();
+        juce::Array<int> folderStart;
+        for (auto& dir : folders)
+        {
+            folderStart.add (user.size());
+            user.addArray (Presets::presetsIn (dir));
+        }
+        folderStart.add (user.size());
+
+        // Favoritos: arriba del todo
+        const auto favs = Presets::favorites();
+        juce::Array<int> favTargets;   // >= 0: preset de fábrica; < 0: -(índice en user) - 1
+        for (auto& name : favs)
+        {
+            const int f = factoryNames.indexOf (name);
+            int u = -1;
+            for (int i = 0; i < user.size() && u < 0; ++i)
+                if (user[i].getFileNameWithoutExtension() == juce::File::createLegalFileName (name))
+                    u = i;
+            if (u >= 0)            { favTargets.add (-u - 1); m.addItem (20000 + favTargets.size() - 1, juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) + name); }
+            else if (f >= 0)       { favTargets.add (f);      m.addItem (20000 + favTargets.size() - 1, juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) + name); }
+        }
+        if (! favTargets.isEmpty())
+            m.addSeparator();
+
+        juce::PopupMenu fm;
+        for (int i = 0; i < factoryNames.size(); ++i)
+            fm.addItem (100 + i, factoryNames[i]);
         m.addSubMenu (tr8 ("De fábrica"), fm);
 
-        const auto user = Presets::userPresets();
         m.addSectionHeader ("Mis presets");
-        if (user.isEmpty())
+        if (user.isEmpty() && folders.isEmpty())
             m.addItem (-1, tr8 ("(todavía ninguno)"), false);
-        for (int i = 0; i < user.size(); ++i)
+        for (int k = 0; k < folders.size(); ++k)
+        {
+            juce::PopupMenu sub;
+            for (int i = folderStart[k]; i < folderStart[k + 1]; ++i)
+                sub.addItem (1000 + i, user[i].getFileNameWithoutExtension());
+            if (folderStart[k] == folderStart[k + 1])
+                sub.addItem (-1, tr8 ("(vacía)"), false);
+            m.addSubMenu (folders[k].getFileName(), sub);
+        }
+        for (int i = 0; i < (folders.isEmpty() ? user.size() : folderStart[0]); ++i)
             m.addItem (1000 + i, user[i].getFileNameWithoutExtension());
 
         m.addSeparator();
+        juce::String current;
+        if (auto* a = dynamic_cast<AmpEffect*> (&processor)) current = a->presetName;
+        const bool currentIsFav = current.isNotEmpty() && favs.contains (current);
+        m.addItem (7, current.isEmpty() ? tr8 ("Añadir a favoritos (primero carga o guarda un preset)")
+                                        : currentIsFav ? tr8 ("Quitar «") + current + tr8 ("» de favoritos")
+                                                       : tr8 ("Añadir «") + current + tr8 ("» a favoritos"),
+                   current.isNotEmpty());
         m.addItem (1, tr8 ("Guardar preset..."));
+        m.addItem (6, tr8 ("Exportar para compartir..."));
         m.addItem (2, tr8 ("Importar preset..."));
+        m.addItem (8, tr8 ("Nueva carpeta..."));
         m.addItem (3, tr8 ("Abrir la carpeta de presets"));
         if (! user.isEmpty())
         {
             juce::PopupMenu del;
             for (int i = 0; i < user.size(); ++i)
-                del.addItem (5000 + i, user[i].getFileNameWithoutExtension());
+            {
+                const auto parent = user[i].getParentDirectory();
+                del.addItem (5000 + i, (parent == Presets::folder() ? juce::String() : parent.getFileName() + " / ")
+                                           + user[i].getFileNameWithoutExtension());
+            }
             m.addSubMenu ("Borrar preset", del);
         }
         m.addSeparator();
         m.addItem (4, "Valores iniciales del ampli");
 
         juce::Component::SafePointer<AmpEditor> self (this);
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [self, user] (int r)
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [self, user, favTargets, current, currentIsFav] (int r)
         {
             if (self == nullptr || r == 0) return;
-            if (r >= 100 && r < 1000) { if (auto x = Presets::factory (r - 100)) self->applyPreset (*x); }
+            if (r >= 20000)
+            {
+                const int t = favTargets[r - 20000];
+                if (t >= 0) { if (auto x = Presets::factory (t)) self->applyPreset (*x); }
+                else if (auto x = Presets::load (user[-t - 1])) self->applyPreset (*x);
+                else self->applyPreset (juce::XmlElement ("NADA"));
+            }
+            else if (r >= 100 && r < 1000) { if (auto x = Presets::factory (r - 100)) self->applyPreset (*x); }
             else if (r >= 1000 && r < 5000)
             {
                 if (auto x = Presets::load (user[r - 1000])) self->applyPreset (*x);
@@ -469,6 +530,9 @@ private:
             else if (r == 1) self->savePreset();
             else if (r == 2) self->importPreset();
             else if (r == 3) Presets::folder().startAsProcess();
+            else if (r == 6) self->exportPreset();
+            else if (r == 7) Presets::setFavorite (current, ! currentIsFav);
+            else if (r == 8) self->newPresetFolder();
             else if (r == 4)
             {
                 juce::XmlElement x (Presets::rootTag());
@@ -486,6 +550,17 @@ private:
         juce::String current;
         if (auto* a = dynamic_cast<AmpEffect*> (&processor)) current = a->presetName;
         aw->addTextEditor ("name", current.isNotEmpty() ? current : juce::String ("Mi sonido"));
+
+        // Carpeta donde guardarlo
+        const auto folders = Presets::userFolders();
+        auto* folderBox = new juce::ComboBox();
+        folderBox->addItem (tr8 ("Carpeta: (ninguna, en «Mis presets»)"), 1);
+        for (int i = 0; i < folders.size(); ++i)
+            folderBox->addItem (tr8 ("Carpeta: ") + folders[i].getFileName(), i + 2);
+        folderBox->setSelectedId (1, juce::dontSendNotification);
+        folderBox->setSize (380, 26);
+        aw->addCustomComponent (folderBox);
+
         auto* withFx = new juce::ToggleButton (tr8 ("Incluir los demás efectos de la pista (reverb, delay...)"));
         withFx->setSize (380, 24);
         withFx->setToggleState (hasOtherEffects && hasOtherEffects(), juce::dontSendNotification);
@@ -495,17 +570,30 @@ private:
         aw->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
         juce::Component::SafePointer<AmpEditor> self (this);
-        aw->enterModalState (true, juce::ModalCallbackFunction::create ([self, aw, withFx] (int res)
+        aw->enterModalState (true, juce::ModalCallbackFunction::create ([self, aw, withFx, folderBox, folders] (int res)
         {
-            std::unique_ptr<juce::ToggleButton> owned (withFx);   // la ventana no se queda con él
+            std::unique_ptr<juce::ToggleButton> owned (withFx);   // la ventana no se queda con ellos
+            std::unique_ptr<juce::ComboBox> ownedBox (folderBox);
             if (self == nullptr || res != 1) return;
             const auto name = aw->getTextEditorContents ("name").trim();
             if (name.isEmpty()) return;
-            self->writePreset (name, withFx->getToggleState());
+            const int idx = folderBox->getSelectedId() - 2;
+            const auto dir = idx >= 0 && idx < folders.size() ? folders[idx] : Presets::folder();
+            if (auto x = self->capturePreset (name, withFx->getToggleState()))
+            {
+                if (! x->writeTo (Presets::fileForName (name, dir)))
+                {
+                    Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Preset", tr8 ("No se ha podido guardar el preset."));
+                    return;
+                }
+                if (auto* a = dynamic_cast<AmpEffect*> (&self->processor)) a->presetName = name;
+                self->updatePresetName();
+            }
         }), true);
     }
 
-    void writePreset (const juce::String& name, bool includeEffects)
+    // Los ajustes actuales como preset (con o sin los demás efectos de la pista)
+    std::unique_ptr<juce::XmlElement> capturePreset (const juce::String& name, bool includeEffects)
     {
         std::unique_ptr<juce::XmlElement> x;
         if (capturePresetHook)
@@ -518,6 +606,12 @@ private:
             e->setAttribute ("type", "Ampli");
             Presets::writeParams (processor, *e);
         }
+        return x;
+    }
+
+    void writePreset (const juce::String& name, bool includeEffects)
+    {
+        auto x = capturePreset (name, includeEffects);
         const auto file = Presets::fileForName (name);
         if (x == nullptr || ! x->writeTo (file))
         {
@@ -526,6 +620,49 @@ private:
         }
         if (auto* a = dynamic_cast<AmpEffect*> (&processor)) a->presetName = name;
         updatePresetName();
+    }
+
+    // Guarda los ajustes actuales (ampli y demás efectos de la pista) en un archivo .sdpreset donde se quiera,
+    // para mandárselo a otra persona (que lo abre con «Importar preset...»)
+    void exportPreset()
+    {
+        juce::String name;
+        if (auto* a = dynamic_cast<AmpEffect*> (&processor)) name = a->presetName;
+        if (name.isEmpty())
+            name = "Mi sonido";
+        const auto start = juce::File::getSpecialLocation (juce::File::userDesktopDirectory)
+                               .getChildFile (juce::File::createLegalFileName (name) + Presets::extension());
+        chooser = std::make_unique<juce::FileChooser> (tr8 ("Exportar preset para compartir"), start, "*" + Presets::extension());
+        juce::Component::SafePointer<AmpEditor> self (this);
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                | juce::FileBrowserComponent::warnAboutOverwriting,
+            [self, name] (const juce::FileChooser& fc)
+            {
+                if (self == nullptr || fc.getResult() == juce::File()) return;
+                auto file = fc.getResult().withFileExtension (Presets::extension());
+                auto x = self->capturePreset (name, self->hasOtherEffects && self->hasOtherEffects());
+                if (x == nullptr || ! x->writeTo (file))
+                    Dialogs::show (juce::MessageBoxIconType::WarningIcon, "Preset", tr8 ("No se ha podido exportar el preset."));
+                else
+                    Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Preset",
+                                   tr8 ("Preset exportado en «") + file.getFullPathName()
+                                   + tr8 ("». Quien lo reciba puede abrirlo con «Importar preset...» en el ampli."));
+            });
+    }
+
+    void newPresetFolder()
+    {
+        auto* aw = new Dialogs::Window ("Nueva carpeta", tr8 ("Nombre de la carpeta de presets:"), juce::MessageBoxIconType::NoIcon);
+        aw->addTextEditor ("name", "Mis sonidos");
+        aw->addButton ("Crear", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        aw->addButton ("Cancelar", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        aw->enterModalState (true, juce::ModalCallbackFunction::create ([aw] (int res)
+        {
+            if (res != 1) return;
+            const auto name = juce::File::createLegalFileName (aw->getTextEditorContents ("name").trim());
+            if (name.isNotEmpty())
+                Presets::folder().getChildFile (name).createDirectory();
+        }), true);
     }
 
     void importPreset()

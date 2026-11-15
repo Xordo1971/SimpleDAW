@@ -19,6 +19,7 @@
 #include "Updater.h"
 #include "Splash.h"
 #include <map>
+#include <set>
 
 // Barra para cambiar la altura del editor arrastrando
 class DragBar : public juce::Component
@@ -308,6 +309,15 @@ private:
     juce::Rectangle<int> vZoomLabelArea;
     LcdDisplay lcd;
     juce::Label deviceInfo;
+
+    // Velocidad de práctica (más lento sin cambiar el tono): copias estiradas preparadas en segundo plano
+    juce::ComboBox speedBox;
+    juce::ThreadPool speedPool { 1 };
+    std::atomic<int> speedGeneration { 0 };
+    std::set<const Clip*> slowPending;
+    int slowCheckCounter = 0;
+    void setPracticeSpeed (double speed);
+    void prepareSlowCopies();
 
     Ruler ruler { engine, timeline };
     juce::Viewport viewport;
