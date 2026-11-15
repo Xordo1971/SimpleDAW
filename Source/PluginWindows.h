@@ -29,6 +29,10 @@ public:
 
     ~PluginEditorWindow() override
     {
+        // Avisar al procesador de que su editor desaparece: si no, cree que sigue abierto y al volver a abrir
+        // la ventana no deja crear otro (el ampli salía con las barras genéricas en lugar de su carátula)
+        if (auto* editor = dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent()))
+            processor.editorBeingDeleted (editor);
         clearContentComponent();   // el editor se destruye antes que el procesador
     }
 

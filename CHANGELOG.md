@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.9.0
+
+- La pista activa se ve más oscura (cabecera y carril), para saber a cuál va lo que importas o grabas. Al añadir una pista nueva pasa a ser la activa automáticamente.
+- Tres presets de fábrica nuevos para el ampli: «Ry Cooder - Feeling Bad Blues», «Sultans of Swing» y «War Raog - Gwendal». Son aproximaciones hechas a oído: retócalas al gusto.
+- Arreglo: al cerrar la ventana del ampli y volver a abrirla salía un panel de barras en lugar de la carátula del Simpleamp. Ahora sale siempre la carátula.
+
 ## 1.8.2
 
 - Nueva tipografía: toda la interfaz (menús, botones, pistas, mezclador, ventanas emergentes) usa ahora Montserrat, con la versión Bold para los textos en negrita y la Regular para el resto. Va incluida en la aplicación, no hace falta instalar nada. Las pantallas de tiempo y tempo conservan su letra de siempre.
