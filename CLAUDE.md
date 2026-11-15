@@ -64,7 +64,5 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Zumbido enorme (Master a +247 dB) al cargar el preset de fábrica «Solo con delay» en el Mac del usuario
   (Clarett+ 2Pre, búfer 32). No se reproduce en las simulaciones. La 1.3.3 añadió la protección/aviso de
   efecto desbocado: el aviso dirá qué efecto falla.
-- Actualizaciones: probada en Mac la actualización automática de 1.6.1 a 1.6.2 (funciona). Falta probarla en Windows.
-  (El guion del Mac se escribe con saltos de línea "
-": con los "
-" por defecto de JUCE, sh falla.)
+- Actualizaciones: probada la actualización automática en Mac (1.6.1 → 1.6.2) y en Windows (2.0.0 → 2.0.1): funciona en los dos.
+  (El guion del Mac se escribe con saltos de línea "\n": con los "\r\n" por defecto de JUCE, sh falla.)
