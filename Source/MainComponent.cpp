@@ -141,7 +141,40 @@ MainComponent::MainComponent()
     if (settings.existsAsFile())
         saved = juce::XmlDocument::parse (settings);
 
-    auto error = deviceManager.initialise (16, 2, saved.get(), true);
+    // Se abre el dispositivo guardado SIN dejar que JUCE pruebe otros si falla: en Windows,
+    // "el primero de la lista" puede ser el driver ASIO de otro fabricante (p. ej. Creative),
+    // que sin su tarjeta llena la pantalla de avisos.
+    juce::String error;
+    if (saved != nullptr)
+    {
+        error = deviceManager.initialise (16, 2, saved.get(), false);
+        if (deviceManager.getCurrentAudioDevice() == nullptr)
+        {
+            // A veces el driver aún no está libre (la sesión anterior se acaba de cerrar): otro intento
+            juce::Thread::sleep (1000);
+            error = deviceManager.initialise (16, 2, saved.get(), false);
+        }
+    }
+    if (deviceManager.getCurrentAudioDevice() == nullptr)
+    {
+        const auto wanted = saved != nullptr ? saved->getStringAttribute ("audioOutputDeviceName") : juce::String();
+        // Arranque seguro: el primer tipo del sistema (en Windows, "Windows Audio"; nunca ASIO a ciegas)
+        if (saved == nullptr)
+            error = deviceManager.initialise (16, 2, nullptr, true);
+        if (deviceManager.getCurrentAudioDevice() == nullptr)
+            if (auto* first = deviceManager.getAvailableDeviceTypes().getFirst())
+            {
+                deviceManager.setCurrentAudioDeviceType (first->getTypeName(), true);
+                error = deviceManager.getCurrentAudioDevice() != nullptr ? juce::String() : error;
+            }
+        if (wanted.isNotEmpty())
+        {
+            audioFallback = true;   // no se pisa la configuración guardada: la próxima vez se vuelve a intentar
+            error = tr8 ("no se pudo abrir «") + wanted + tr8 ("». Usando ")
+                    + (deviceManager.getCurrentAudioDevice() != nullptr ? deviceManager.getCurrentAudioDevice()->getName() : juce::String ("ningún dispositivo"))
+                    + tr8 (". Vuelve a elegirlo en Audio.");
+        }
+    }
     loadAppSettings();   // después de abrir el dispositivo: la latencia manual depende de la frecuencia
     setupDefaultBuses();
     deviceManager.addAudioCallback (&engine);
@@ -199,6 +232,8 @@ MainComponent::~MainComponent()
 
 void MainComponent::saveAudioSettings()
 {
+    if (audioFallback)
+        return;   // estamos con el dispositivo de emergencia: se conserva el que eligió el usuario
     if (auto xml = deviceManager.createStateXml())
         xml->writeTo (AppPaths::audioSettings());
 }
@@ -524,6 +559,7 @@ void MainComponent::showAudioSettings()
 {
     if (engine.getState() != AudioEngine::stopped)
         stopTransport();
+    audioFallback = false;   // a partir de aquí, lo que elija el usuario se guarda
 
     auto* panel = new AudioSettingsPanel (deviceManager, engine, [this] { return getActiveInputNames(); },
                                           [this] { saveAppSettings(); });

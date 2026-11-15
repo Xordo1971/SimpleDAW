@@ -3,6 +3,10 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.8.1
+
+- Arranque más seguro con el audio: si no se puede abrir el dispositivo guardado (por ejemplo un driver ASIO de otro fabricante sin su tarjeta conectada), SimpleDAW ya no prueba otros a ciegas. Reintenta una vez, usa el dispositivo por defecto del sistema, avisa de cuál no se pudo abrir y conserva tu configuración guardada hasta que vuelvas a elegir el dispositivo en Audio.
+
 ## 1.8.0
 
 - Modo claro: en «Ver > Modo claro» la aplicación entera pasa a colores claros (barra, pistas, editor, mezclador, ventanas emergentes y menús), y se vuelve al modo oscuro desmarcándolo. Hay también un botón con un sol/luna junto al afinador que lo activa y desactiva. El cambio es inmediato y se recuerda al volver a abrir SimpleDAW. La ventana tiene ahora 50 píxeles más de ancho mínimo para que quepa el botón nuevo. Los medidores y las cajas de volumen siguen oscuros para que se lean bien.

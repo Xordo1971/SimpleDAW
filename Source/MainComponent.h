@@ -240,6 +240,7 @@ private:
     void showAudioSettings();
     void refreshDeviceInfo();
     void saveAudioSettings();
+    bool audioFallback = false;   // no se pudo abrir el dispositivo guardado
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
