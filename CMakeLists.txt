@@ -36,10 +36,9 @@ target_sources(SimpleDAW PRIVATE
 # Imágenes incluidas dentro de la aplicación (las que existan en Resources/):
 #   logo-app.png   logotipo pequeño de la barra superior
 #   logo-full.png  logotipo completo de la pantalla de arranque
-#   amp-panel.jpg  frontal del ampli integrado (Simpleamp)
 #   Montserrat-*.ttf  tipografía de la interfaz (licencia OFL)
 set(SIMPLEDAW_RESOURCES)
-foreach(res logo-app.png logo-full.png amp-panel.jpg Montserrat-Regular.ttf Montserrat-Bold.ttf)
+foreach(res logo-app.png logo-full.png Montserrat-Regular.ttf Montserrat-Bold.ttf)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/${res}")
         list(APPEND SIMPLEDAW_RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Resources/${res}")
     endif()

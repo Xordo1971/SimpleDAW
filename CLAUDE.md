@@ -22,8 +22,9 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   envíos en filas, volumen/pico, R/I/M/S; todos reservan las mismas filas de envíos y huecos para alinear faders), `MixerHost`.
 - `TrackComponent.h`: cabecera y carril de cada pista (regiones, batería por compases, automatización).
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
-- `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1537x649; los mandos se dibujan girando
-  la propia foto; coordenadas en píxeles de la imagen). Franja inferior: presets, pantalla, puerta de ruido.
+- `AmpEditor.h`: frontal gráfico del ampli. El dibujo lo genera `AmpPanel.h` por código (1537x649, sin fotos ni
+  diseños ajenos; no usar imágenes de otros amplis o plugins). Los mandos se dibujan girando ese dibujo; coordenadas
+  en "píxeles de imagen". Franja inferior: presets, pantalla, puerta de ruido.
 - `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
   amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).

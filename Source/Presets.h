@@ -201,7 +201,7 @@ namespace Presets
                    <PARAM id="bass" value="5"/><PARAM id="mid" value="6"/><PARAM id="treble" value="6"/>
                    <PARAM id="presence" value="5.5"/><PARAM id="master" value="-5"/></EFFECT>
                </SIMPLEDAW_PRESET>)P"),
-            tr8 (R"P(<SIMPLEDAW_PRESET name="Rock (BE + C45)">
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Rock (crunch + bite)">
                  <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="8"/>
                    <PARAM id="bass" value="5.5"/><PARAM id="mid" value="6"/><PARAM id="treble" value="6"/>
                    <PARAM id="c45" value="on"/><PARAM id="master" value="-6"/><PARAM id="gate" value="-70"/></EFFECT>

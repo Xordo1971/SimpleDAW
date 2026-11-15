@@ -1,11 +1,12 @@
 #pragma once
-// Frontal del ampli integrado ("Simpleamp"): la foto del cabezal con
+// Frontal del ampli integrado ("Simpleamp"): el cabezal dibujado por código (AmpPanel.h) con
 // potenciómetros que giran e interruptores que se mueven de verdad.
 // Se incluye desde Effects.h (solo en la aplicación, no en las pruebas).
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Theme.h"
 #include "Dialogs.h"
 #include "Presets.h"
+#include "AmpPanel.h"
 #if SIMPLEDAW_HAS_BINARYDATA
  #include "BinaryData.h"
 #endif
@@ -13,14 +14,17 @@
 class AmpEditor : public juce::AudioProcessorEditor
 {
 public:
+    // Frontal dibujado por código (AmpPanel.h); se dibuja una sola vez
     static juce::Image loadPanel()
     {
-       #if SIMPLEDAW_HAS_BINARYDATA
-        int size = 0;
-        if (auto* data = BinaryData::getNamedResource ("amppanel_jpg", size))
-            return juce::ImageCache::getFromMemory (data, size);
-       #endif
-        return {};
+        constexpr juce::int64 key = 0x53696d706c65616dLL;   // "Simpleam"
+        auto img = juce::ImageCache::getFromHashCode (key);
+        if (! img.isValid())
+        {
+            img = AmpPanelArt::draw();
+            juce::ImageCache::addImageToCache (img, key);
+        }
+        return img;
     }
 
     explicit AmpEditor (juce::AudioProcessor& p) : juce::AudioProcessorEditor (p), panel (loadPanel())
@@ -33,7 +37,7 @@ public:
             if (auto* param = find (k.id))
                 knobs.add (new Knob (*this, *param, { k.x, 514.0f }));
 
-        // Interruptores pequeños y selector de canal (CLN - BE - HBE)
+        // Interruptores pequeños y selector de canal (limpio - crunch - lead)
         struct S { const char* id; float x, y; };
         for (auto sw : { S { "fat", 495.5f, 568.5f }, S { "c45", 608.0f, 569.0f }, S { "sat", 720.5f, 569.0f },
                          S { "voice", 1055.0f, 569.0f }, S { "bright", 1167.0f, 568.5f }, S { "channel", 1279.5f, 569.0f },
@@ -311,7 +315,7 @@ private:
         juce::String describe() const
         {
             if (numStates > 2)
-                return tr8 ("Canal:  ") + juce::StringArray { "CLN (limpio)", "BE (crunch)", "HBE (lead)" }[value];
+                return tr8 ("Canal:  ") + juce::StringArray { "Limpio", "Crunch", "Lead" }[value];
             return param.getName (60) + ":  " + (value != 0 ? juce::String ("ON") : juce::String ("OFF"));
         }
 
@@ -363,7 +367,7 @@ private:
             return;
         }
 
-        // Palanca hacia la derecha (como en la foto) = activado / HBE
+        // Palanca hacia la derecha (como en el dibujo) = activado / canal Lead
         const int right = sw.numStates - 1;
         if (sw.value == right)
             return;

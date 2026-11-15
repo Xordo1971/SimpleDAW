@@ -518,7 +518,7 @@ public:
         cleanBass   = param ("cleanBass", "Graves (limpio)", 0.0f, 10.0f, 5.0f);
         // Interruptores
         fat    = toggle ("fat", "Fat (más graves)", false);
-        c45    = toggle ("c45", "C45 (más brillo y mordida)", false);
+        c45    = toggle ("c45", "Bite (más brillo y mordida)", false);   // id antiguo, por compatibilidad
         sat    = toggle ("sat", "Sat (más saturación)", false);
         voice  = toggle ("voice", "Voice (limpio con más medios)", false);
         bright = toggle ("bright", "Bright (limpio más brillante)", false);
@@ -600,7 +600,7 @@ private:
         auto db = [] (float v) { return juce::Decibels::decibelsToGain (v); };
 
         // Antes de saturar: quitar graves que embarran y (crunch/lead) realzar medios para que "muerda"
-        // Interruptores: Voice/Bright en el limpio; Fat/C45 en los canales saturados
+        // Interruptores: Voice/Bright en el limpio; Fat/Bite en los canales saturados
         const bool clean = ch == 0;
         auto pre0 = Coefs::makeHighPass (sr, clean ? (voice->get() ? 90.0 : 60.0) : (fat->get() ? 70.0 : 110.0), 0.7f);
         auto pre1 = Coefs::makePeakFilter (sr, clean ? 650.0 : 800.0, 0.7f, db (clean ? (voice->get() ? 4.5f : 0.0f) : 6.0f));
