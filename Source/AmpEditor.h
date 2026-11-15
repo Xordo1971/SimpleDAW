@@ -321,20 +321,41 @@ private:
         bool power;
         int value = 0, numStates = 2;
         juce::ParameterAttachment attachment;
+        juce::Image normal, mirrored, flipped;   // trozos de la foto ya girados (se preparan la primera vez)
     };
+
+    // Trozo de la foto como imagen independiente, opcionalmente en espejo (izquierda-derecha) o
+    // volteado (arriba-abajo). En Windows (Direct2D), dibujar con transformación un trozo
+    // recortado de otra imagen no siempre se veía: los interruptores no cambiaban de posición.
+    juce::Image spriteFor (juce::Rectangle<int> ri, bool mirror, bool flip) const
+    {
+        juce::Image img (juce::Image::ARGB, ri.getWidth(), ri.getHeight(), true, juce::SoftwareImageType());
+        juce::Graphics g (img);
+        auto t = juce::AffineTransform::translation ((float) -ri.getX(), (float) -ri.getY());
+        if (mirror) t = t.scaled (-1.0f, 1.0f).translated ((float) ri.getWidth(), 0.0f);
+        if (flip)   t = t.scaled (1.0f, -1.0f).translated (0.0f, (float) ri.getHeight());
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.drawImageTransformed (panel, t);
+        return img;
+    }
 
     void drawSwitch (juce::Graphics& g, Switch& sw)
     {
         const auto r = sw.area();
         const auto ri = r.toNearestInt();
-        auto sprite = panel.getClippedImage (ri);
+        if (! sw.normal.isValid())
+        {
+            sw.normal   = spriteFor (ri, false, false);
+            sw.mirrored = spriteFor (ri, true, false);
+            sw.flipped  = spriteFor (ri, false, true);
+        }
 
         if (sw.power)
         {
             // En la foto está hacia abajo y con el piloto encendido: así es "encendido"
             if (sw.value == 0)
             {
-                g.drawImageTransformed (sprite, juce::AffineTransform::scale (1.0f, -1.0f).translated ((float) ri.getX(), (float) ri.getBottom()));
+                g.drawImageAt (sw.flipped, ri.getX(), ri.getY());
                 const juce::Rectangle<float> led (336.0f, 499.0f, 32.0f, 33.0f);
                 g.setColour (juce::Colour (0xff1a0402).withAlpha (0.78f));
                 g.fillRoundedRectangle (led, 2.0f);
@@ -348,17 +369,16 @@ private:
             return;
 
         juce::Graphics::ScopedSaveState state (g);
-        const auto mirror = juce::AffineTransform::scale (-1.0f, 1.0f).translated ((float) ri.getRight(), (float) ri.getY());
         if (sw.value == 0)
         {
-            g.drawImageTransformed (sprite, mirror);
+            g.drawImageAt (sw.mirrored, ri.getX(), ri.getY());
             return;
         }
 
         // Posición central: sin palanca a ningún lado, con la bola en el centro
-        g.drawImageTransformed (sprite, mirror);
+        g.drawImageAt (sw.mirrored, ri.getX(), ri.getY());
         g.reduceClipRegion (ri.withTrimmedRight (ri.getWidth() / 2));
-        g.drawImageAt (sprite, ri.getX(), ri.getY());
+        g.drawImageAt (sw.normal, ri.getX(), ri.getY());
         g.restoreState(); g.saveState();
         const auto c = sw.centre.translated (0.5f, 0.0f);
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xfff2f2f2), c.x - 1.5f, c.y - 2.0f,
