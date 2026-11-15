@@ -15,6 +15,7 @@ namespace
 MainComponent::MainComponent()
 {
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    juce::Typeface::clearTypefaceCache();   // si algún texto ya había cargado la letra del sistema, que vuelva a pedirla al tema (Montserrat)
     setWantsKeyboardFocus (true);
 
     auto setupButton = [this] (juce::Button& b, std::function<void()> action, const juce::String& tip)
