@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.11.0
+
+- Pantallas reales en el ampli: la opción «Pantalla» tiene ahora «IR (archivo)», y un botón «IR...» para cargar una respuesta al impulso (.wav, .aiff o .flac) de un altavoz o una pantalla de verdad. Se guarda con el proyecto; si el archivo se mueve o se borra, la pantalla queda sin IR.
+- Tres efectos nuevos en el menú de efectos: Tremolo (velocidad, profundidad, forma de onda y modo estéreo), Wah (con el pedal a mano, automático con LFO o según cómo se toca) y Puerta de ruido (umbral, ataque, mantener, relajación y reducción).
+- Al importar un audio, la pista nueva queda en «Sin entrada» en vez de escuchar la entrada 1 de la tarjeta.
+
 ## 1.10.0
 
 - «Importar audio» (Ctrl/Cmd+I) pone ahora el audio en una pista nueva, desde el principio, y avisa en la barra inferior de a qué pista ha ido (que pasa a ser la pista activa). Así no se pisa por error la pista donde estabas trabajando. Para importar a la pista activa, desde el cursor, hay una opción nueva: «Pista > Importar a la pista activa» (Ctrl/Cmd+Mayús+I).
