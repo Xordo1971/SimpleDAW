@@ -8,7 +8,12 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Versión: `project(SimpleDAW VERSION x.y.z)` en CMakeLists.txt (sale en la pantalla de arranque).
 - GitHub Actions (`.github/workflows/publicar.yml`): al subir una etiqueta `vX.Y.Z` (igual a la versión de
   CMakeLists) compila el DMG universal y el ZIP de Windows y crea la Release.
-- Repositorio público: github.com/Xordo1971/SimpleDAW (rama `main`). La 1.4.0 fue la primera Release.
+- Repositorio PRIVADO (decisión del usuario): github.com/Xordo1971/SimpleDAW (rama `main`). La 1.4.0 fue la primera
+  Release. Al ser privado, las apps instaladas no pueden buscar actualizaciones automáticas (hasta que vuelva a ser público).
+- Si los runners de macOS de GitHub no arrancan (la tarea `mac` se cancela a los 15 min en cola; pasó con la 2.1.0), compilar
+  el DMG en local con las mismas opciones del workflow (`-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, `-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0`,
+  carpeta `build-dmg`), firmar con `codesign --force --deep --sign -`, crear `SimpleDAW-x.y.z-mac.dmg` con `hdiutil` y que el
+  usuario lo arrastre a la Release en la web (no hay `gh` ni se usa su token). El DMG de Mac va en `macos-latest`.
   `compilar.yml` compila de prueba en cada subida: sirve para detectar errores de MSVC sin tener Windows.
 
 ## Arquitectura (Source/)
