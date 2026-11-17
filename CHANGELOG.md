@@ -3,12 +3,17 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.1.1
+
+- Pantalla de arranque y «Acerca de»: el texto de la versión, abajo a la derecha, se veía amontonado; ahora se lee bien.
+
 ## 2.1.0
 
 - Ampli: nuevo panel «Pantalla y micro» a la derecha del cabezal, con la foto de la pantalla elegida (1x12, 2x12 o 4x12) y un micrófono delante que se arrastra sobre el altavoz: en el centro del cono suena más brillante y hacia el borde más suave.
 - Siete micros para elegir: Condenser 87, Condenser 414, Dynamic 20, Dynamic 57, Dynamic 421, Dynamic 609 y Ribbon 121, y un regulador de distancia (pegado: más graves y más directo; lejos: más suave). El micro solo suena si hay pantalla.
 - La posición, el modelo y la distancia del micro se guardan con el proyecto y con los presets del ampli. Los presets antiguos siguen sonando casi igual (micro Dynamic 57 por defecto).
 - La ventana del ampli es ahora más ancha para dar sitio al panel. Si usas una pantalla por IR, el micro no actúa: la respuesta ya lleva el micro de quien la grabó.
+
 ## 2.0.1
 
 - Frontal nuevo del ampli Simpleamp, con un diseño propio. Los mandos giran y las palancas se mueven sobre la imagen nueva; al apagarlo, la palanca de POWER sube y el piloto se apaga.
