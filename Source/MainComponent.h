@@ -219,6 +219,9 @@ private:
     void loadAppSettings();
     void saveAppSettings();
     void setLightMode (bool on);
+    void applyTheme (int id, bool lightMode);
+    void setThemeId (int id);   // "Ver > Tema": 0 = oscuro/claro de siempre, 1.. = Grafito, Papel, Medianoche, Analógico
+    int themeIdSaved = 0;
     bool lightModeSaved = false;   // "Ver > Modo claro" (se guarda en los ajustes)
     void offerUpdate (const Updater::Release&);
     juce::String skippedVersion;   // "Saltar esta versión"

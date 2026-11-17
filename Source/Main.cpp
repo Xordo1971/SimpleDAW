@@ -11,15 +11,24 @@ public:
 
     void initialise (const juce::String&) override
     {
-        // Modo claro u oscuro antes de crear ninguna ventana (SIMPLEDAW_MODO=claro|oscuro lo fuerza sin guardarlo)
+        // Aspecto (modo claro u oscuro, o uno de los temas) antes de crear ninguna ventana.
+        // SIMPLEDAW_MODO=claro|oscuro|grafito|papel|medianoche|analogico lo fuerza sin guardarlo
         bool lightMode = false;
+        int themeId = 0;
         if (auto xml = juce::XmlDocument::parse (AppPaths::appSettings()))
+        {
             lightMode = xml->getBoolAttribute ("lightMode", false);
+            themeId = xml->getIntAttribute ("themeId", 0);
+        }
         const auto forced = juce::SystemStats::getEnvironmentVariable ("SIMPLEDAW_MODO", {});
         if (forced.isNotEmpty())
-            lightMode = forced == "claro";
-        Theme::setLight (lightMode);
-        StripLook::setLight (lightMode);
+        {
+            themeId = forced == "grafito" ? 1 : forced == "papel" ? 2 : forced == "medianoche" ? 3 : forced == "analogico" ? 4 : 0;
+            if (themeId == 0)
+                lightMode = forced == "claro";
+        }
+        Theme::setTheme (themeId, lightMode);
+        StripLook::setTheme (themeId, lightMode);
 
         splash = std::make_unique<SplashWindow> ("v" + getApplicationVersion());
 

@@ -3,6 +3,11 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.2.0
+
+- Cuatro temas nuevos de aspecto, en «Ver > Tema»: Grafito (oscuro con el amarillo de la marca), Papel (crema cálido con acento terracota), Medianoche (azul oscuro con cian) y Analógico (nogal y latón). Cambian en caliente y se recuerdan al reabrir.
+- «Predeterminado» es el aspecto de siempre, con su modo oscuro y claro. «Modo claro» y el botón sol/luna vuelven a él.
+
 ## 2.1.1
 
 - Pantalla de arranque y «Acerca de»: el texto de la versión, abajo a la derecha, se veía amontonado; ahora se lee bien.

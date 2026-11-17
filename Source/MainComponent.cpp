@@ -2396,7 +2396,7 @@ namespace MenuIds
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
         newTrack = 10, importAudio, transpose, speed, newDrumTrack, importToTrack,
-        mixer = 20, editor, plugins, audioSettings, about, lightMode,
+        mixer = 20, editor, plugins, audioSettings, about, lightMode, themeBase = 100,   // themeBase + n = tema n (0 = el de siempre)
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
 }
@@ -2488,7 +2488,14 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         add (MenuIds::mixer,  "Mezclador",       juce::KeyPress ('x', 0, 0), mixerOpen);
         add (MenuIds::editor, "Editor de audio", juce::KeyPress ('e', 0, 0), editorVisible);
         m.addSeparator();
-        add (MenuIds::lightMode, "Modo claro", {}, Theme::light);
+        {
+            juce::PopupMenu themes;
+            juce::StringArray labels { tr8 ("Predeterminado (oscuro o claro)"), "Grafito", "Papel", "Medianoche", tr8 ("Analógico") };
+            for (int i = 0; i < labels.size(); ++i)
+                themes.addItem (MenuIds::themeBase + i, labels[i], true, Theme::themeId == i);
+            m.addSubMenu ("Tema", themes);
+        }
+        add (MenuIds::lightMode, "Modo claro", {}, Theme::light && Theme::themeId == 0);
         m.addSeparator();
         add (MenuIds::plugins,       "Plugins...");
         add (MenuIds::audioSettings, "Ajustes de audio...");
@@ -2531,6 +2538,9 @@ void MainComponent::menuItemSelected (int itemId, int)
         case MenuIds::audioSettings: showAudioSettings(); break;
         case MenuIds::about:         showAbout(); break;
         case MenuIds::lightMode:     setLightMode (! Theme::light); break;
+        case MenuIds::themeBase + 0: case MenuIds::themeBase + 1: case MenuIds::themeBase + 2:
+        case MenuIds::themeBase + 3: case MenuIds::themeBase + 4:
+            setThemeId (itemId - MenuIds::themeBase); break;
         case MenuIds::play:          togglePlay(); break;
         case MenuIds::record:        toggleRecord(); break;
         case MenuIds::toStart:       goToStart(); break;
@@ -2725,6 +2735,7 @@ void MainComponent::loadAppSettings()
         lastRunVersion = xml->getStringAttribute ("lastVersion", "0");
         showButtonLabels = xml->getBoolAttribute ("buttonLabels", false);
         lightModeSaved = xml->getBoolAttribute ("lightMode", false);   // ya aplicado al arrancar (Main.cpp)
+        themeIdSaved = xml->getIntAttribute ("themeId", 0);
         labelsToggle.expanded = showButtonLabels;
     }
 }
@@ -2738,6 +2749,7 @@ void MainComponent::saveAppSettings()
         xml.setAttribute ("skipVersion", skippedVersion);
     xml.setAttribute ("buttonLabels", showButtonLabels);
     xml.setAttribute ("lightMode", lightModeSaved);
+    xml.setAttribute ("themeId", themeIdSaved);
     xml.setAttribute ("lastVersion", lastRunVersion.isNotEmpty() ? lastRunVersion : Updater::currentVersion());
     xml.writeTo (AppPaths::appSettings());
 }
@@ -2746,13 +2758,25 @@ void MainComponent::saveAppSettings()
 // ventanas abiertas, los colores que los componentes tenían puestos con setColour
 void MainComponent::setLightMode (bool on)
 {
-    lightModeSaved = on;
+    applyTheme (0, on);   // el sol/luna y "Modo claro" vuelven al aspecto de siempre
+}
+
+void MainComponent::setThemeId (int id)
+{
+    applyTheme (id, id == 0 ? lightModeSaved : false);
+}
+
+void MainComponent::applyTheme (int id, bool lightMode)
+{
+    themeIdSaved = id;
+    if (id == 0)
+        lightModeSaved = lightMode;
     saveAppSettings();
-    if (on == Theme::light)
+    if (id == Theme::themeId && (id != 0 || lightMode == Theme::light))
         return;
 
-    auto changes = Theme::setLight (on);
-    for (auto& c : StripLook::setLight (on))
+    auto changes = Theme::setTheme (id, lightMode);
+    for (auto& c : StripLook::setTheme (id, lightMode))
         changes.insert (c);
     lookAndFeel.applyColours();
     StripLookAndFeel::get().applyColours();
@@ -2768,6 +2792,7 @@ void MainComponent::setLightMode (bool on)
             c->sendLookAndFeelChange();
             c->repaint();
         }
+    themeButton.setToggleState (Theme::light, juce::dontSendNotification);
     menuItemsChanged();
 }
 

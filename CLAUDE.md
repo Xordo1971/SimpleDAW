@@ -59,6 +59,11 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Textos con acentos: `tr8 ("...")` (Text.h); nunca `juce::String` directo de un literal no ASCII.
 - No capturar "structured bindings" en lambdas (MSVC en C++17 falla).
 - Tras un cambio: compilar en Mac y probar; el motor tiene pruebas sin interfaz en `Tests/` (ver LEEME).
+- Temas (`Ver > Tema`): `Theme::themeDefs()` (Theme.h) y `StripLook::themeValues()` (MixerComponent.h) guardan la paleta de
+  Grafito, Papel, Medianoche y Analógico en el mismo orden que `neutralSwatches()` (más `accent`, que ahora cambia con el
+  tema). `Theme::setTheme(id, claro)`: id 0 = oscuro/claro de siempre. Se guarda `themeId` en los ajustes;
+  `SIMPLEDAW_MODO=grafito|papel|medianoche|analogico` los fuerza en las capturas. Para añadir uno: una fila en cada tabla,
+  y su entrada en el menú (`MenuIds::themeBase`).
 - Modo claro/oscuro: los colores neutros de `Theme` y `StripLook` son variables (`setLight`); los de estado son
   constantes. Usar siempre los colores de `Theme` (p. ej. `Theme::contrast` para rejillas, `Theme::strongText`
   para títulos), no blanco/negro fijos. El cambio en caliente (`MainComponent::setLightMode`) recolorea los

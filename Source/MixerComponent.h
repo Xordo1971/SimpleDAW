@@ -122,18 +122,35 @@ namespace StripLook
         };
     }
 
-    inline std::map<juce::uint32, juce::uint32> setLight (bool on)
+    // Colores del mezclador de cada tema de Theme::themeDefs() (mismo orden que neutralSwatches())
+    inline const std::array<std::array<juce::uint32, 7>, 4>& themeValues()
+    {
+        static const std::array<std::array<juce::uint32, 7>, 4> v {{
+            { 0xff2a2c31, 0xff202226, 0xff191a1d, 0xff4a4e56, 0xff0b0c0e, 0xffe6e7ea, 0xffa6a9b0 },   // Grafito
+            { 0xffd9ccb5, 0xffcdbfa6, 0xffc4b69c, 0xfff5eee0, 0xff9c8e75, 0xff2c261e, 0xff6f6454 },   // Papel
+            { 0xff141c3c, 0xff0f1530, 0xff0b1128, 0xff2a3868, 0xff04070f, 0xffdde6ff, 0xff8393c4 },   // Medianoche
+            { 0xff4e3626, 0xff3e2a1d, 0xff2f2016, 0xff7a5a40, 0xff120b07, 0xfff3e7cf, 0xffc3ae8f },   // Analogico
+        }};
+        return v;
+    }
+
+    inline std::map<juce::uint32, juce::uint32> setTheme (int id, bool lightMode)
     {
         std::map<juce::uint32, juce::uint32> changes;
+        const bool themed = id >= 1 && id <= (int) themeValues().size();
+        size_t i = 0;
         for (auto& s : neutralSwatches())
         {
-            const auto now = juce::Colour (on ? s.light : s.dark);
+            const auto now = juce::Colour (themed ? themeValues()[(size_t) id - 1][i] : (lightMode ? s.light : s.dark));
             if (s.colour->getARGB() != now.getARGB())
                 changes.emplace (s.colour->getARGB(), now.getARGB());
             *s.colour = now;
+            ++i;
         }
         return changes;
     }
+
+    inline std::map<juce::uint32, juce::uint32> setLight (bool on) { return setTheme (0, on); }
 
     // Botón o hueco ocupado: gris con un degradado suave y borde oscuro
     inline void drawFace (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour base, bool over, bool down)

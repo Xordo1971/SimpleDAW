@@ -1,5 +1,8 @@
 #pragma once
 #include "Text.h"
+#include <array>
+#include <map>
+#include <vector>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #if SIMPLEDAW_HAS_BINARYDATA
@@ -11,7 +14,8 @@
 // los de estado (acento, rojo de grabar, verde, amarillo...) son iguales en los dos.
 namespace Theme
 {
-    inline bool light = false;
+    inline bool light = false;     // la paleta actual es clara (modo claro o un tema claro)
+    inline int  themeId = 0;       // 0 = el de siempre (oscuro/claro); 1.. = temas con paleta propia
 
     // Neutros: empiezan en modo oscuro
     inline juce::Colour background   { 0xff1c1d20 };
@@ -34,7 +38,7 @@ namespace Theme
     inline juce::Colour dialogText   { 0xfff2f3f5 };
 
     // De estado: iguales en los dos modos
-    inline const juce::Colour accent       { 0xff4ea1ff };
+    inline juce::Colour accent             { 0xff4ea1ff };   // cambia con el tema
     inline const juce::Colour playGreen    { 0xff3fc46b };
     inline const juce::Colour recordRed    { 0xffe5484d };
     inline const juce::Colour soloYellow   { 0xffe8c547 };
@@ -67,24 +71,56 @@ namespace Theme
             { &field,         0xff1b1c1f, 0xfffbfbfc },
             { &dialogBox,     0xff53565c, 0xfff6f7f8 },
             { &dialogText,    0xfff2f3f5, 0xff1b1d21 },
+            { &accent,        0xff4ea1ff, 0xff4ea1ff },
         };
     }
 
-    // Cambia los colores neutros y devuelve qué color antiguo pasa a cuál nuevo (para recolorear
-    // los componentes que ya tenían un color puesto con setColour)
-    inline std::map<juce::uint32, juce::uint32> setLight (bool on)
+    // Temas con paleta propia (además del oscuro/claro de siempre). Mismo orden que neutralSwatches():
+    // background, panel, panelLight, panelDark, lane, laneAlt, border, text, textDim, playhead, strongText,
+    // contrast, screen, screenText, screenTextDim, field, dialogBox, dialogText, accent
+    struct ThemeDef { const char* name; bool isLight; std::array<juce::uint32, 19> v; };
+
+    inline const std::array<ThemeDef, 4>& themeDefs()
+    {
+        static const std::array<ThemeDef, 4> defs {{
+            { "Grafito", false, { 0xff17181b, 0xff222428, 0xff34373d, 0xff1a1b1e, 0xff1c1d21, 0xff202226, 0xff0b0c0e,
+                                  0xffe3e4e7, 0xff8b8f98, 0xffffc801, 0xffffffff, 0xfffffffe, 0xff0b0c0e, 0xffffc801,
+                                  0xffa09a78, 0xff131417, 0xff2f3237, 0xfff2f3f5, 0xffffc801 } },
+            { "Papel", true,     { 0xfff1eadf, 0xffe4d9c6, 0xfff7f1e6, 0xffddd0ba, 0xffebe2d3, 0xffe6dccb, 0xffb8a98f,
+                                  0xff3a332b, 0xff85796a, 0xffc0502f, 0xff1f1a14, 0xff000001, 0xff3a332b, 0xfff6ecd9,
+                                  0xffcdbfa6, 0xfffffaf1, 0xfffbf6ec, 0xff2b251e, 0xffc0502f } },
+            { "Medianoche", false, { 0xff080d1d, 0xff101733, 0xff1a2550, 0xff0a1024, 0xff0c1329, 0xff0f1730, 0xff03060f,
+                                  0xffdde6ff, 0xff6c7ba8, 0xff2fd8ff, 0xffffffff, 0xfffffffe, 0xff03060f, 0xff2fd8ff,
+                                  0xff8fa0cf, 0xff050913, 0xff1a2550, 0xffeef2ff, 0xff2fd8ff } },
+            { "Analogico", false, { 0xff2a1d15, 0xff4b3324, 0xff6e4d35, 0xff3a281b, 0xff33261b, 0xff382a1f, 0xff150e09,
+                                  0xfff1e4ca, 0xffb09a7c, 0xffdba842, 0xfffff4dc, 0xfffffffe, 0xff140e09, 0xffffb347,
+                                  0xffc79a5a, 0xff1c130d, 0xff5a3e2c, 0xfff6ead2, 0xffdba842 } },
+        }};
+        return defs;
+    }
+
+    // Cambia la paleta (id 0 = oscuro/claro de siempre según 'lightMode'; 1.. = tema) y devuelve qué
+    // color antiguo pasa a cuál nuevo (para recolorear los componentes que ya tenían un color puesto
+    // con setColour)
+    inline std::map<juce::uint32, juce::uint32> setTheme (int id, bool lightMode)
     {
         std::map<juce::uint32, juce::uint32> changes;
-        light = on;
+        const bool themed = id >= 1 && id <= (int) themeDefs().size();
+        themeId = themed ? id : 0;
+        light = themed ? themeDefs()[(size_t) id - 1].isLight : lightMode;
+        size_t i = 0;
         for (auto& s : neutralSwatches())
         {
-            const auto now = juce::Colour (on ? s.light : s.dark);
+            const auto now = juce::Colour (themed ? themeDefs()[(size_t) id - 1].v[i] : (lightMode ? s.light : s.dark));
             if (s.colour->getARGB() != now.getARGB())
                 changes.emplace (s.colour->getARGB(), now.getARGB());
             *s.colour = now;
+            ++i;
         }
         return changes;
     }
+
+    inline std::map<juce::uint32, juce::uint32> setLight (bool on) { return setTheme (0, on); }
 
     // Recolorea un componente y sus hijos: cada color puesto con setColour que coincida con un
     // color antiguo de la paleta pasa al nuevo
@@ -221,6 +257,7 @@ public:
         setColour (juce::ComboBox::arrowColourId, textDim);
         setColour (juce::PopupMenu::backgroundColourId, panel);
         setColour (juce::PopupMenu::highlightedBackgroundColourId, accent);
+        setColour (juce::PopupMenu::highlightedTextColourId, accent.getPerceivedBrightness() > 0.6f ? juce::Colours::black : juce::Colours::white);
         setColour (juce::PopupMenu::textColourId, text);
         setColour (juce::Label::textColourId, text);
         setColour (juce::Slider::textBoxTextColourId, textDim);
