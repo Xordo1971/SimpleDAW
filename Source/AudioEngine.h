@@ -25,6 +25,11 @@ struct Clip
     juce::File savedAs;   // copia guardada en la carpeta del proyecto (no se hereda al editar)
     juce::File recoveryAs;  // copia en la carpeta de recuperación (autoguardado)
 
+    // Velocidad de práctica: copia más lenta del audio (sin cambiar el tono) para la velocidad slowSpeed.
+    // Solo se cambia con el lock del motor; el hilo de audio la lee con el lock.
+    std::shared_ptr<juce::AudioBuffer<float>> slowAudio;
+    double slowSpeed = 1.0;
+
     int getNumChannels() const     { return audio.getNumChannels(); }
     juce::int64 getLength() const  { return audio.getNumSamples(); }
 
@@ -430,7 +435,9 @@ public:
     std::atomic<double> bpm { 120.0 };
     std::atomic<int> sigNum { 4 }, sigDen { 4 };    // 3/4, 4/4, 6/8...
     std::atomic<bool> metronomeOn { false };
-    std::atomic<bool> countInOn { true };           // un compás de precuenta al grabar
+    std::atomic<double> practiceSpeed { 1.0 };      // velocidad de práctica (1 = normal)
+    std::atomic<bool> countInOn { true };           // precuenta al grabar
+    std::atomic<int> countInBars { 1 };             // compases de precuenta (1 a 4)
     std::atomic<float> metronomeVolume { 0.7f };
 
     // Duración de una parte (la figura del denominador) y de un compás, en muestras
@@ -489,6 +496,54 @@ public:
 
     // ¿Se perdieron muestras al escribir en disco durante la última toma?
     bool takeLostSamples() const { return droppedSamples.load(); }
+
+    // ---------- Velocidad de práctica ----------
+    // Reproduce más despacio sin cambiar el tono: cada clip suena desde una copia estirada que se
+    // calcula aparte (fuera del hilo de audio). Mientras no está lista, ese clip no suena.
+    // Lo que entra por la tarjeta (monitorización) no se ve afectado. Con velocidad < 1 no se graba.
+    void setPracticeSpeed (double s)        { practiceSpeed = juce::jlimit (0.25, 1.0, s); }
+    double getPracticeSpeed() const         { return practiceSpeed.load(); }
+    bool isPracticeSlow() const             { return practiceSpeed.load() < 0.999; }
+
+    // Clips (las tomas activas de cada región) que aún no tienen copia para esta velocidad
+    std::vector<std::shared_ptr<Clip>> clipsNeedingSlowCopy (double s) const
+    {
+        std::vector<std::shared_ptr<Clip>> list;
+        for (auto* t : tracks)
+            for (auto& r : t->regions)
+                if (r.clip != nullptr && (r.clip->slowAudio == nullptr || std::abs (r.clip->slowSpeed - s) > 1.0e-6)
+                    && std::find (list.begin(), list.end(), r.clip) == list.end())
+                    list.push_back (r.clip);
+        return list;
+    }
+
+    void setSlowCopy (const std::shared_ptr<Clip>& clip, std::shared_ptr<juce::AudioBuffer<float>> audio, double s)
+    {
+        std::shared_ptr<juce::AudioBuffer<float>> old;
+        {
+            const juce::ScopedLock sl (lock);
+            old = std::move (clip->slowAudio);
+            clip->slowAudio = std::move (audio);
+            clip->slowSpeed = s;
+        }
+    }   // la copia antigua se libera aquí, fuera del lock
+
+    // Libera las copias estiradas (al volver al 100 %)
+    void clearSlowCopies()
+    {
+        std::vector<std::shared_ptr<juce::AudioBuffer<float>>> old;
+        const juce::ScopedLock sl (lock);
+        auto clear = [&old] (const std::shared_ptr<Clip>& c)
+        {
+            if (c != nullptr && c->slowAudio != nullptr) { old.push_back (std::move (c->slowAudio)); c->slowSpeed = 1.0; }
+        };
+        for (auto* t : tracks)
+            for (auto& r : t->regions)
+            {
+                clear (r.clip);
+                for (auto& take : r.takes) clear (take);
+            }
+    }
 
     // ---------- Tomas ----------
     bool setActiveTake (Track& t, juce::int64 regionId, int take)
@@ -624,7 +679,7 @@ public:
         recordMode = (int) mode;
         recordStartPosition = transportStart;
         // Precuenta: el transporte arranca un compás antes
-        position = transportStart - (countInOn.load() ? bar : 0);
+        position = transportStart - (countInOn.load() ? bar * juce::jlimit (1, 4, countInBars.load()) : 0);
         state = recording;
         return (int) pending.size();
     }
@@ -782,6 +837,27 @@ public:
             if (mode == RecordMode::cycle && len > loopLen)   // poco más de una vuelta: solo la primera
                 trimmed = sliceClip (*trimmed, 0, (int) loopLen, trimmed->name);
             trimmed->computePeaks();
+
+            // Grabación normal que empieza justo donde empieza una región de la pista (otra vez desde el
+            // mismo marcador o desde el inicio): se guarda como otra toma de esa región, no encima.
+            if (mode == RecordMode::normal)
+            {
+                const juce::ScopedLock sl (lock);
+                for (auto it = t.regions.rbegin(); it != t.regions.rend(); ++it)
+                {
+                    auto& r = *it;
+                    if (std::abs (r.start - t.recordStart) > 2)
+                        continue;
+                    if (r.takes.empty())
+                        r.takes.push_back (r.clip);
+                    trimmed->name = r.takes.front()->name + " (toma " + juce::String ((int) r.takes.size() + 1) + ")";
+                    r.takes.push_back (trimmed);
+                    r.activeTake = (int) r.takes.size() - 1;   // suena la nueva
+                    r.clip = trimmed;
+                    return;
+                }
+            }
+
             addRegion (t, trimmed, t.recordStart);
             return;
         }
@@ -987,29 +1063,47 @@ private:
                                   && ! (st == recording && getRecordMode() == RecordMode::punch)
                                   && ! rendering.load();   // al exportar, siempre de corrido
 
+            // Velocidad de práctica: la línea de tiempo avanza "speed" muestras por cada muestra de salida.
+            // Se lleva la parte fraccionaria aparte; si alguien mueve el cursor, se empieza de cero.
+            const double speed = (st == recording || rendering.load()) ? 1.0 : practiceSpeed.load();
+            if (pos != speedLastPos || speed >= 0.999)
+                speedFrac = 0.0;
+            const double posD = (double) pos + speedFrac;
+
             int seg = numSamples - done;
             if (looping)
-                seg = (int) juce::jmin ((juce::int64) seg, le - pos);
+                seg = (int) juce::jlimit ((juce::int64) 1, (juce::int64) seg,
+                                          (juce::int64) std::ceil (((double) le - posD) / speed));
 
             for (int ch = 0; ch < numIn; ++ch)  inSeg[ch]  = in != nullptr && in[ch] != nullptr ? in[ch] + done : nullptr;
             for (int ch = 0; ch < numOut; ++ch) outSeg[ch] = out[ch] != nullptr ? out[ch] + done : nullptr;
 
-            processRange (in != nullptr ? inSeg : nullptr, numIn, outSeg, numOut, seg, st, pos);
+            processRange (in != nullptr ? inSeg : nullptr, numIn, outSeg, numOut, seg, st, pos, posD, speed);
 
             done += seg;
             if (st != stopped)
             {
-                auto next = pos + seg;
-                if (looping && next >= le)
-                    next = ls;
+                double nextD = posD + (double) seg * speed;
+                if (looping && nextD >= (double) le)
+                    nextD = (double) ls;
+                const auto next = (juce::int64) std::floor (nextD);
+                speedFrac = nextD - (double) next;
                 position.store (next);
+                speedLastPos = next;
+            }
+            else
+            {
+                speedLastPos = pos;
             }
         }
     }
 
+    // pos: posición (entera) al empezar; posD y speed: posición exacta y velocidad de práctica
+    // (con speed = 1, posD == pos y todo es como siempre)
     void processRange (const float* const* in, int numIn, float* const* out, int numOut, int numSamples,
-                       int st, juce::int64 pos)
+                       int st, juce::int64 pos, double posD, double speed)
     {
+        const bool slow = speed < 0.999;
         juce::ScopedNoDenormals noDenormals;
 
         bool anySolo = false;
@@ -1099,15 +1193,35 @@ private:
                 for (auto it = t->regions.rbegin(); it != t->regions.rend(); ++it)
                 {
                     const auto& r = *it;
-                    const juce::int64 from = juce::jmax (pos, r.start);
-                    const juce::int64 to   = juce::jmin (pos + (juce::int64) numSamples, r.getEnd());
-                    if (to <= from)
-                        continue;
+                    int i = 0, end = 0;
+                    juce::int64 srcStart = 0;   // muestra del audio que corresponde a la salida 0
+                    const juce::AudioBuffer<float>* source = &r.clip->audio;
+                    if (! slow)
+                    {
+                        const juce::int64 from = juce::jmax (pos, r.start);
+                        const juce::int64 to   = juce::jmin (pos + (juce::int64) numSamples, r.getEnd());
+                        if (to <= from)
+                            continue;
+                        i = (int) (from - pos);
+                        end = (int) (to - pos);
+                        srcStart = pos - r.start;
+                    }
+                    else
+                    {
+                        // Copia estirada: la salida i corresponde a la muestra (posD - inicio) / speed + i
+                        source = r.clip->slowAudio.get();
+                        if (source == nullptr || std::abs (r.clip->slowSpeed - speed) > 1.0e-6)
+                            continue;   // aún se está preparando: este clip calla
+                        srcStart = (juce::int64) std::floor (((posD - (double) r.start) / speed) + 0.5);
+                        const juce::int64 slowLen = source->getNumSamples();
+                        i = (int) juce::jlimit ((juce::int64) 0, (juce::int64) numSamples, -srcStart);
+                        end = (int) juce::jlimit ((juce::int64) 0, (juce::int64) numSamples, slowLen - srcStart);
+                        if (end <= i)
+                            continue;
+                    }
 
-                    const auto& audio = r.clip->audio;
+                    const auto& audio = *source;
                     const bool stereo = audio.getNumChannels() > 1;
-                    int i = (int) (from - pos);
-                    const int end = (int) (to - pos);
                     while (i < end)
                     {
                         while (i < end && covered[(size_t) i] != 0) ++i;   // tramo ya cubierto por otra región
@@ -1115,7 +1229,7 @@ private:
                         while (j < end && covered[(size_t) j] == 0) ++j;
                         if (j > i)
                         {
-                            const int srcPos = (int) (pos + i - r.start);
+                            const int srcPos = (int) (srcStart + i);
                             const float* left  = audio.getReadPointer (0, srcPos);
                             const float* right = stereo ? audio.getReadPointer (1, srcPos) : left;
                             w.addFrom (0, i, left, j - i);
@@ -1130,14 +1244,14 @@ private:
             juce::ignoreUnused (hasSignal);
 
             if (t->isDrum())
-                renderDrums (*t, numSamples, st, pos);
+                renderDrums (*t, numSamples, st, posD, speed);
 
             processInserts (*t, numSamples);
 
             // Automatización (en reproducción): mueve el fader y el panorama
             if (st != stopped)
             {
-                const auto mid = pos + numSamples / 2;
+                const auto mid = (juce::int64) (posD + numSamples * speed * 0.5);
                 if (t->hasAutomation (Track::autoVolume)) t->volumeDb = t->automationValueAt (Track::autoVolume, mid);
                 if (t->hasAutomation (Track::autoPan))    t->pan = t->automationValueAt (Track::autoPan, mid);
             }
@@ -1200,7 +1314,7 @@ private:
         {
             const bool countIn = st == recording && pos < recordStartPosition.load();
             if (metronomeOn.load() || countIn)
-                addMetronome (out, numOut, numSamples, pos);
+                addMetronome (out, numOut, numSamples, posD, speed);
         }
 
         if (muteForTuner.load() && ! rendering.load())   // al exportar nunca se silencia
@@ -1210,7 +1324,8 @@ private:
     }
 
     // Batería: dispara los pasos que caen en este tramo y suma el kit a la pista
-    void renderDrums (Track& t, int numSamples, int st, juce::int64 pos)
+    // posD/speed: con velocidad de práctica, el tramo de la línea de tiempo es más corto que el bloque
+    void renderDrums (Track& t, int numSamples, int st, double posD, double speed)
     {
         auto& d = *t.drum;
         if (st != stopped)
@@ -1220,14 +1335,15 @@ private:
             const int stepsPerBar = juce::jlimit (1, Drums::maxSteps, (int) std::lround (samplesPerBar() / sixteenth));
             const double swingOffset = juce::jlimit (0.0f, 1.0f, d.swing) * sixteenth / 3.0;
 
-            for (auto g = (juce::int64) std::floor ((double) pos / sixteenth) - 1; (double) g * sixteenth < (double) (pos + numSamples); ++g)
+            const double spanEnd = posD + (double) numSamples * speed;
+            for (auto g = (juce::int64) std::floor (posD / sixteenth) - 1; (double) g * sixteenth < spanEnd; ++g)
             {
                 if (g < 0)
                     continue;
                 const auto bar = g / stepsPerBar;
                 const int step = (int) (g % stepsPerBar);
                 const double when = (double) g * sixteenth + ((step & 1) != 0 ? swingOffset : 0.0);
-                const auto offset = (juce::int64) std::floor (when) - pos;
+                const auto offset = (juce::int64) std::floor ((when - posD) / speed);
                 if (offset < 0 || offset >= numSamples || bar >= Drums::maxBars)
                     continue;
                 const int pattern = d.arrangement[(size_t) bar];
@@ -1257,7 +1373,7 @@ private:
     }
 
     // Clic del metrónomo: tono corto con caída rápida; más agudo y fuerte en la primera parte del compás
-    void addMetronome (float* const* out, int numOut, int numSamples, juce::int64 pos)
+    void addMetronome (float* const* out, int numOut, int numSamples, double posD, double speed)
     {
         const double spb = samplesPerBeat();
         const int num = juce::jmax (1, sigNum.load());
@@ -1266,9 +1382,9 @@ private:
 
         for (int i = 0; i < numSamples; ++i)
         {
-            const double p = (double) (pos + i);
+            const double p = posD + (double) i * speed;
             const double beat = std::floor (p / spb);
-            if (p - beat * spb < 1.0)   // empieza una parte en esta muestra
+            if (beat != std::floor ((p - speed) / spb))   // empieza una parte en esta muestra
             {
                 const auto beatIndex = (juce::int64) beat;
                 const bool accent = ((beatIndex % num) + num) % num == 0;
@@ -1432,6 +1548,8 @@ private:
 
     // Estado del clic del metrónomo (solo hilo de audio)
     double clickPhase = 0.0, clickFreq = 1000.0;
+    double speedFrac = 0.0;                 // parte fraccionaria de la posición (velocidad de práctica)
+    juce::int64 speedLastPos = -1;          // última posición escrita por el hilo de audio
     float clickGain = 0.0f;
     int clickPos = 1 << 30, clickLength = 0;
 

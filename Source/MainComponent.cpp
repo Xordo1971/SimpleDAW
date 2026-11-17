@@ -15,6 +15,7 @@ namespace
 MainComponent::MainComponent()
 {
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    juce::Typeface::clearTypefaceCache();   // si algún texto ya había cargado la letra del sistema, que vuelva a pedirla al tema (Montserrat)
     setWantsKeyboardFocus (true);
 
     auto setupButton = [this] (juce::Button& b, std::function<void()> action, const juce::String& tip)
@@ -29,7 +30,7 @@ MainComponent::MainComponent()
     setupButton (audioButton,    [this] { showAudioSettings(); }, "Dispositivos de entrada y salida");
     setupButton (mixerButton,    [this] { toggleMixer(); },       "Mostrar u ocultar el mezclador (X)");
     setupButton (pluginsButton,  [this] { showPluginManager(); }, "Buscar y gestionar plugins (VST3 / AU)");
-    setupButton (importButton,   [this] { chooseFilesToImport(); }, tr8 ("Importar audio (wav, aiff, mp3...) a la pista seleccionada. También puedes arrastrar archivos a una pista"));
+    setupButton (importButton,   [this] { chooseFilesToImport(); }, tr8 ("Importar audio (wav, aiff, mp3...) en una pista nueva (Ctrl/Cmd+I). A la pista activa: Pista > Importar a la pista activa. También puedes arrastrar archivos a la ventana"));
     setupButton (editorButton,   [this] { toggleEditor(); },       tr8 ("Mostrar u ocultar el editor de audio (E)"));
     setupButton (tunerButton,    [this] { toggleTuner(); },        tr8 ("Afinador de guitarra y bajo (T)"));
     setupButton (themeButton,    [this] { setLightMode (! Theme::light); }, tr8 ("Cambiar entre modo claro y oscuro"));
@@ -50,6 +51,15 @@ MainComponent::MainComponent()
                  },                                               "Parar (pulsa otra vez para volver al inicio)");
     setupButton (zoomOutButton,  [this] { zoom (1.0 / 1.5); },    "Alejar");
     setupButton (zoomInButton,   [this] { zoom (1.5); },          "Acercar");
+
+    // Velocidad de práctica
+    for (int pct : { 100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50 })
+        speedBox.addItem (juce::String (pct) + " %", pct);
+    speedBox.setSelectedId (100, juce::dontSendNotification);
+    speedBox.setTooltip (tr8 ("Velocidad de práctica: reproduce más despacio sin cambiar el tono (no cambia el audio). "
+                              "Por debajo del 100 % no se puede grabar."));
+    speedBox.onChange = [this] { setPracticeSpeed (speedBox.getSelectedId() / 100.0); };
+    addAndMakeVisible (speedBox);
 
     // Botones solo con icono; el nombre sale debajo si se despliega la franja inferior de la barra
     for (auto* b : { &addTrackButton, &audioButton, &mixerButton, &tunerButton, &pluginsButton, &importButton, &editorButton })
@@ -141,7 +151,40 @@ MainComponent::MainComponent()
     if (settings.existsAsFile())
         saved = juce::XmlDocument::parse (settings);
 
-    auto error = deviceManager.initialise (16, 2, saved.get(), true);
+    // Se abre el dispositivo guardado SIN dejar que JUCE pruebe otros si falla: en Windows,
+    // "el primero de la lista" puede ser el driver ASIO de otro fabricante (p. ej. Creative),
+    // que sin su tarjeta llena la pantalla de avisos.
+    juce::String error;
+    if (saved != nullptr)
+    {
+        error = deviceManager.initialise (16, 2, saved.get(), false);
+        if (deviceManager.getCurrentAudioDevice() == nullptr)
+        {
+            // A veces el driver aún no está libre (la sesión anterior se acaba de cerrar): otro intento
+            juce::Thread::sleep (1000);
+            error = deviceManager.initialise (16, 2, saved.get(), false);
+        }
+    }
+    if (deviceManager.getCurrentAudioDevice() == nullptr)
+    {
+        const auto wanted = saved != nullptr ? saved->getStringAttribute ("audioOutputDeviceName") : juce::String();
+        // Arranque seguro: el primer tipo del sistema (en Windows, "Windows Audio"; nunca ASIO a ciegas)
+        if (saved == nullptr)
+            error = deviceManager.initialise (16, 2, nullptr, true);
+        if (deviceManager.getCurrentAudioDevice() == nullptr)
+            if (auto* first = deviceManager.getAvailableDeviceTypes().getFirst())
+            {
+                deviceManager.setCurrentAudioDeviceType (first->getTypeName(), true);
+                error = deviceManager.getCurrentAudioDevice() != nullptr ? juce::String() : error;
+            }
+        if (wanted.isNotEmpty())
+        {
+            audioFallback = true;   // no se pisa la configuración guardada: la próxima vez se vuelve a intentar
+            error = tr8 ("no se pudo abrir «") + wanted + tr8 ("». Usando ")
+                    + (deviceManager.getCurrentAudioDevice() != nullptr ? deviceManager.getCurrentAudioDevice()->getName() : juce::String ("ningún dispositivo"))
+                    + tr8 (". Vuelve a elegirlo en Audio.");
+        }
+    }
     loadAppSettings();   // después de abrir el dispositivo: la latencia manual depende de la frecuencia
     setupDefaultBuses();
     deviceManager.addAudioCallback (&engine);
@@ -176,6 +219,8 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
+    ++speedGeneration;                 // las copias de velocidad que se estén calculando se abandonan
+    speedPool.removeAllJobs (true, 10000);
     stopTimer();
     autosaveTimer.stopTimer();
     drumEditorWindow = nullptr;
@@ -199,6 +244,8 @@ MainComponent::~MainComponent()
 
 void MainComponent::saveAudioSettings()
 {
+    if (audioFallback)
+        return;   // estamos con el dispositivo de emergencia: se conserva el que eligió el usuario
     if (auto xml = deviceManager.createStateXml())
         xml->writeTo (AppPaths::audioSettings());
 }
@@ -318,33 +365,142 @@ void MainComponent::toggleRecord()
         return;
     }
 
+    if (engine.isPracticeSlow())
+    {
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, tr8 ("Velocidad de práctica"),
+            tr8 ("Para grabar, vuelve a poner la velocidad al 100 % (el selector de velocidad, junto al afinador)."));
+        return;
+    }
+
     if (engine.startRecording (AppPaths::recordingsFolder()) == 0)
         Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Nada que grabar",
             tr8 ("Arma al menos una pista (botón R) que tenga una entrada seleccionada."));
+}
+
+// ===================== Velocidad de práctica =====================
+
+void MainComponent::setPracticeSpeed (double speed)
+{
+    if (engine.isRecording())
+    {
+        speedBox.setSelectedId (juce::roundToInt (engine.getPracticeSpeed() * 100.0), juce::dontSendNotification);
+        return;
+    }
+    ++speedGeneration;                  // lo que se esté calculando para otra velocidad se abandona
+    speedPool.removeAllJobs (true, 0);
+    slowPending.clear();
+
+    engine.setPracticeSpeed (speed);
+    if (! engine.isPracticeSlow())
+        engine.clearSlowCopies();
+    else
+        prepareSlowCopies();
+    refreshDeviceInfo();
+}
+
+void MainComponent::prepareSlowCopies()
+{
+    if (! engine.isPracticeSlow())
+        return;
+    const double speed = engine.getPracticeSpeed();
+    const int generation = speedGeneration.load();
+    std::atomic<int>* current = &speedGeneration;   // el destructor espera a los trabajos antes de destruirlo
+    juce::Component::SafePointer<MainComponent> self (this);
+    bool added = false;
+
+    for (auto& clip : engine.clipsNeedingSlowCopy (speed))
+    {
+        if (! slowPending.insert (clip.get()).second)
+            continue;   // ya está en marcha
+        added = true;
+        speedPool.addJob ([self, clip, speed, generation, current]
+        {
+            // Phase vocoder (el mismo de «Cambiar velocidad»), canal a canal
+            auto slow = std::make_shared<juce::AudioBuffer<float>>();
+            const int channels = clip->getNumChannels();
+            const int len = (int) clip->getLength();
+            std::vector<float> out;
+            bool ok = true;
+            for (int ch = 0; ch < channels && ok; ++ch)
+            {
+                ok = PitchShifter::changeSpeed (clip->audio.getReadPointer (ch), len, speed, out,
+                                                [current, generation] (double) { return current->load() == generation; });
+                if (ok)
+                {
+                    if (ch == 0)
+                        slow->setSize (channels, (int) out.size());
+                    slow->copyFrom (ch, 0, out.data(), juce::jmin (slow->getNumSamples(), (int) out.size()));
+                }
+            }
+            juce::MessageManager::callAsync ([self, clip, slow, speed, generation, ok]
+            {
+                if (self == nullptr)
+                    return;
+                self->slowPending.erase (clip.get());
+                if (ok && generation == self->speedGeneration.load())
+                    self->engine.setSlowCopy (clip, slow, speed);
+                self->refreshDeviceInfo();
+            });
+        });
+    }
+    if (added)
+        refreshDeviceInfo();
 }
 
 void MainComponent::stopTransport()
 {
     const bool wasRecording = engine.isRecording();
 
-    // Regiones que había antes de parar (para saber cuáles son nuevas)
-    std::map<Track*, size_t> before;
+    // Regiones que había antes de parar (para saber cuáles son nuevas y a cuáles se les ha añadido una toma)
+    std::map<Track*, std::vector<Region>> before;
     if (wasRecording)
         for (auto* tc : trackComponents)
-            before[&tc->getTrack()] = tc->getTrack().regions.size();
+            before[&tc->getTrack()] = tc->getTrack().regions;
 
     engine.stop();
 
     if (wasRecording)
     {
-        std::vector<std::pair<Track*, Region>> added;
-        for (auto& [t, count] : before)
-            for (size_t i = count; i < t->regions.size(); ++i)
-                added.push_back ({ t, t->regions[i] });
-        if (! added.empty())
+        struct Change { Track* track; Region before, after; bool isNew; };
+        std::vector<Change> changes;
+        for (auto& entry : before)
+        {
+            Track* t = entry.first;
+            const auto& old = entry.second;
+            for (auto& r : t->regions)
+            {
+                auto prev = std::find_if (old.begin(), old.end(), [&r] (const Region& o) { return o.id == r.id; });
+                if (prev == old.end())
+                    changes.push_back ({ t, Region(), r, true });
+                else if (prev->clip != r.clip || prev->takes.size() != r.takes.size())
+                    changes.push_back ({ t, *prev, r, false });   // nueva toma en una región que ya estaba
+            }
+        }
+        if (! changes.empty())
             recordUndo (tr8 ("Grabación"),
-                [this, added] { for (auto& [t, r] : added) engine.takeRegion (*t, r.id); },
-                [this, added] { for (auto& [t, r] : added) engine.putRegion (*t, r, -1); });
+                [this, changes]
+                {
+                    for (auto& c : changes)
+                    {
+                        const auto taken = engine.takeRegion (*c.track, c.after.id);
+                        if (! c.isNew && taken.second >= 0)
+                            engine.putRegion (*c.track, c.before, taken.second);
+                    }
+                },
+                [this, changes]
+                {
+                    for (auto& c : changes)
+                    {
+                        if (c.isNew)
+                            engine.putRegion (*c.track, c.after, -1);
+                        else
+                        {
+                            const auto taken = engine.takeRegion (*c.track, c.after.id);
+                            if (taken.second >= 0)
+                                engine.putRegion (*c.track, c.after, taken.second);
+                        }
+                    }
+                });
     }
 
     if (wasRecording && engine.takeLostSamples())
@@ -402,6 +558,7 @@ bool MainComponent::handleKey (const juce::KeyPress& key)
         if (k == 'z') { undo(); return true; }
         if (k == 'y') { redo(); return true; }
         if (k == 'd') { duplicateSelectedRegion(); return true; }
+        if (k == 'i' && mods.isShiftDown()) { chooseFilesToImport (true); return true; }
         if (k == 'i') { chooseFilesToImport(); return true; }
         if (k == 'n') { newProject(); return true; }
         if (k == 'o') { openProject(); return true; }
@@ -457,6 +614,13 @@ void MainComponent::repaintTimeline()
 
 void MainComponent::timerCallback()
 {
+    // Velocidad de práctica: audio nuevo (importado, editado...) que aún no tiene su copia estirada
+    if (engine.isPracticeSlow() && ++slowCheckCounter >= 15)
+    {
+        slowCheckCounter = 0;
+        prepareSlowCopies();
+    }
+
     // ¿Algún efecto se ha desbocado? El motor ya lo ha silenciado y desactivado: avisamos
     {
         Track* t = nullptr;
@@ -524,6 +688,7 @@ void MainComponent::showAudioSettings()
 {
     if (engine.getState() != AudioEngine::stopped)
         stopTransport();
+    audioFallback = false;   // a partir de aquí, lo que elija el usuario se guarda
 
     auto* panel = new AudioSettingsPanel (deviceManager, engine, [this] { return getActiveInputNames(); },
                                           [this] { saveAppSettings(); });
@@ -566,7 +731,11 @@ void MainComponent::refreshDeviceInfo()
 
         deviceInfo.setText (dev->getTypeName() + "  |  " + dev->getName()
                               + "  |  " + juce::String (sr, 0) + " Hz"
-                              + "  |  buffer " + juce::String (buffer) + " (" + juce::String (ms, 1) + " ms)",
+                              + "  |  buffer " + juce::String (buffer) + " (" + juce::String (ms, 1) + " ms)"
+                              + (engine.isPracticeSlow()
+                                    ? "  |  " + tr8 ("Velocidad de práctica ") + juce::String (juce::roundToInt (engine.getPracticeSpeed() * 100.0)) + " %"
+                                        + (slowPending.empty() ? juce::String() : tr8 (" (preparando ") + juce::String ((int) slowPending.size()) + tr8 (" audio(s)...)"))
+                                    : juce::String()),
                             juce::dontSendNotification);
     }
     else
@@ -689,7 +858,8 @@ void MainComponent::resized()
     // el transporte y el ciclo, y a su derecha el metrónomo y el afinador.
     // Si la ventana es tan estrecha que no puede ir centrada, se arrima lo justo a la derecha.
     const int bw = 44, gap = 4, sideGap = 14;
-    const int transportW = 5 * bw + 4 * gap, rightW = 3 * bw + 2 * gap;
+    const int speedW = 76;
+    const int transportW = 5 * bw + 4 * gap, rightW = 3 * bw + 3 * gap + speedW;
     const int centreX = getWidth() / 2;
     const int leftLimit = toolbar.getX() + transportW + sideGap;
     const int rightLimit = toolbar.getRight() - rightW - sideGap;
@@ -717,7 +887,8 @@ void MainComponent::resized()
     auto right = toolbar.withLeft (lcd.getRight() + sideGap).withWidth (rightW);
     metronomeButton.setBounds (right.removeFromLeft (bw)); right.removeFromLeft (gap);
     tunerButton.setBounds     (right.removeFromLeft (bw)); right.removeFromLeft (gap);
-    themeButton.setBounds     (right.removeFromLeft (bw));
+    themeButton.setBounds     (right.removeFromLeft (bw)); right.removeFromLeft (gap);
+    speedBox.setBounds        (right.removeFromLeft (speedW).withSizeKeepingCentre (speedW, 28));
 
     masterStrip->setBounds (area.removeFromLeft (ChannelStrip::stripWidth));
     area.removeFromLeft (3);
@@ -1211,16 +1382,35 @@ void MainComponent::regionsChanged()
     repaintTimeline();
 }
 
-void MainComponent::chooseFilesToImport()
+void MainComponent::showNotice (const juce::String& text)
 {
-    fileChooser = std::make_unique<juce::FileChooser> (tr8 ("Importar audio"),
+    deviceInfo.setText (text, juce::dontSendNotification);
+    juce::Component::SafePointer<MainComponent> self (this);
+    juce::Timer::callAfterDelay (6000, [self] { if (self != nullptr) self->refreshDeviceInfo(); });
+}
+
+// Por defecto el audio va a una pista nueva (no se pisa por error la pista donde se estaba trabajando).
+// toActiveTrack: a la pista activa, desde la posición del cursor.
+void MainComponent::chooseFilesToImport (bool toActiveTrack)
+{
+    if (toActiveTrack && selectedTrack == nullptr)
+    {
+        Dialogs::show (juce::MessageBoxIconType::InfoIcon, "Importar audio",
+                       tr8 ("No hay ninguna pista activa. Pulsa en la cabecera de una pista para activarla, o usa «Importar audio» para crear una pista nueva."));
+        return;
+    }
+
+    Track* target = toActiveTrack ? selectedTrack : nullptr;
+    const auto title = toActiveTrack ? tr8 ("Importar audio a la pista «") + target->name + tr8 ("»")
+                                     : tr8 ("Importar audio (en una pista nueva)");
+    fileChooser = std::make_unique<juce::FileChooser> (title,
                                                        juce::File::getSpecialLocation (juce::File::userMusicDirectory),
                                                        engine.getSupportedWildcards());
 
     juce::Component::SafePointer<MainComponent> self (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                                 | juce::FileBrowserComponent::canSelectMultipleItems,
-        [self] (const juce::FileChooser& fc)
+        [self, target] (const juce::FileChooser& fc)
         {
             if (self == nullptr)
                 return;
@@ -1228,7 +1418,7 @@ void MainComponent::chooseFilesToImport()
             for (auto& f : fc.getResults())
                 paths.add (f.getFullPathName());
             if (! paths.isEmpty())
-                self->importFiles (paths, self->selectedTrack, self->engine.getPosition());
+                self->importFiles (paths, target, target != nullptr ? self->engine.getPosition() : 0);
         });
 }
 
@@ -1323,6 +1513,10 @@ void MainComponent::doImport (const juce::StringArray& files, Track* target, juc
             addTrackWithUndo();
             t = &trackComponents.getLast()->getTrack();
             t->name = f.getFileNameWithoutExtension();
+            // Un audio importado (backing track, sonido...) no escucha ninguna entrada de la tarjeta
+            t->inputChannel = -1;
+            if (auto* tc = componentFor (t))
+                tc->setInputChannels (getActiveInputNames());
         }
         lastRegion = engine.addRegion (*t, clip, position);
         {
@@ -1337,7 +1531,11 @@ void MainComponent::doImport (const juce::StringArray& files, Track* target, juc
     juce::MouseCursor::hideWaitCursor();
 
     if (lastTrack != nullptr)
+    {
         selectRegion (*lastTrack, lastRegion);
+        showNotice (files.size() == 1 ? tr8 ("«") + juce::File (files[0]).getFileNameWithoutExtension() + tr8 ("» importado en la pista «") + lastTrack->name + tr8 ("» (ahora es la pista activa)")
+                                      : juce::String (files.size()) + tr8 (" archivos importados, cada uno en su pista. La última es la pista activa."));
+    }
     regionsChanged();
 
     if (! errors.isEmpty())
@@ -1530,6 +1728,7 @@ std::unique_ptr<juce::XmlElement> MainComponent::createProjectXml (const juce::F
     root->setAttribute ("sigDen", timeline.sigDen);
     root->setAttribute ("metronome", engine.metronomeOn.load());
     root->setAttribute ("countIn", engine.countInOn.load());
+    root->setAttribute ("countInBars", engine.countInBars.load());
     root->setAttribute ("metronomeVolume", (double) engine.metronomeVolume.load());
     root->setAttribute ("loopStart", juce::String (engine.loopStart.load()));
     root->setAttribute ("loopEnd", juce::String (engine.loopEnd.load()));
@@ -1779,6 +1978,7 @@ void MainComponent::loadProject (const juce::File& file, bool isRecovery)
     setTimeSignature (xml->getIntAttribute ("sigNum", 4), xml->getIntAttribute ("sigDen", 4));
     engine.metronomeOn = xml->getBoolAttribute ("metronome", false);
     engine.countInOn = xml->getBoolAttribute ("countIn", true);
+    engine.countInBars = juce::jlimit (1, 4, xml->getIntAttribute ("countInBars", 1));
     engine.metronomeVolume = (float) xml->getDoubleAttribute ("metronomeVolume", 0.7);
     engine.loopStart = (juce::int64) std::llround ((double) xml->getStringAttribute ("loopStart", "0").getLargeIntValue() * (engine.getSampleRate() > 0 ? engine.getSampleRate() / juce::jmax (1.0, xml->getDoubleAttribute ("sampleRate", 48000.0)) : 1.0));
     engine.loopEnd = (juce::int64) std::llround ((double) xml->getStringAttribute ("loopEnd", "0").getLargeIntValue() * (engine.getSampleRate() > 0 ? engine.getSampleRate() / juce::jmax (1.0, xml->getDoubleAttribute ("sampleRate", 48000.0)) : 1.0));
@@ -2195,7 +2395,7 @@ namespace MenuIds
     {
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
-        newTrack = 10, importAudio, transpose, speed, newDrumTrack,
+        newTrack = 10, importAudio, transpose, speed, newDrumTrack, importToTrack,
         mixer = 20, editor, plugins, audioSettings, about, lightMode,
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
@@ -2252,7 +2452,15 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     {
         add (MenuIds::newTrack,    "Nueva pista de audio");
         add (MenuIds::newDrumTrack, tr8 ("Nueva pista de batería"));
-        add (MenuIds::importAudio, "Importar audio...", juce::KeyPress ('i', cmd, 0));
+        add (MenuIds::importAudio, tr8 ("Importar audio (en pista nueva)..."), juce::KeyPress ('i', cmd, 0));
+        {
+            juce::PopupMenu::Item item (selectedTrack != nullptr ? tr8 ("Importar a la pista activa «") + selectedTrack->name + tr8 ("»...")
+                                                                 : tr8 ("Importar a la pista activa..."));
+            item.itemID = MenuIds::importToTrack;
+            item.isEnabled = selectedTrack != nullptr;
+            item.shortcutKeyDescription = juce::KeyPress ('i', cmd | shift, 0).getTextDescriptionWithIcons();
+            m.addItem (item);
+        }
         m.addSeparator();
         add (MenuIds::transpose,   tr8 ("Transponer región..."));
         add (MenuIds::speed,       tr8 ("Cambiar velocidad de la región..."));
@@ -2271,7 +2479,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         add (MenuIds::punch,     tr8 ("Pinchado automático (punch in/out)"), juce::KeyPress ('p', 0, 0), engine.punchOn.load());
         m.addSeparator();
         add (MenuIds::metronome, tr8 ("Metrónomo"),     juce::KeyPress ('k', 0, 0), engine.metronomeOn.load());
-        add (MenuIds::countIn,   tr8 ("Precuenta de un compás al grabar"), {}, engine.countInOn.load());
+        add (MenuIds::countIn,   tr8 ("Precuenta al grabar"), {}, engine.countInOn.load());
         m.addSeparator();
         add (MenuIds::tuner,     "Afinador",           juce::KeyPress ('t', 0, 0), tunerWindow != nullptr && tunerWindow->isVisible());
     }
@@ -2308,6 +2516,7 @@ void MainComponent::menuItemSelected (int itemId, int)
         case MenuIds::newTrack:      addTrackWithUndo(); break;
         case MenuIds::newDrumTrack:  addTrackWithUndo (true); break;
         case MenuIds::importAudio:   chooseFilesToImport(); break;
+        case MenuIds::importToTrack: chooseFilesToImport (true); break;
         case MenuIds::speed:
             if (selectedTrack != nullptr)
                 changeRegionSpeed (*selectedTrack, selectedRegion);
@@ -2390,16 +2599,26 @@ void MainComponent::showMetronomeOptions()
             volume.onValueChange = [this] { engine.metronomeVolume = (float) volume.getValue(); };
             addAndMakeVisible (volume);
 
-            countIn.setButtonText (tr8 ("Precuenta de un compás al grabar"));
+            countIn.setButtonText (tr8 ("Precuenta al grabar"));
             countIn.setToggleState (engine.countInOn.load(), juce::dontSendNotification);
             countIn.onClick = [this] { engine.countInOn = countIn.getToggleState(); };
             addAndMakeVisible (countIn);
+
+            barsLabel.setText (tr8 ("Compases de precuenta"), juce::dontSendNotification);
+            barsLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            barsLabel.setColour (juce::Label::textColourId, Theme::textDim);
+            addAndMakeVisible (barsLabel);
+            for (int i = 1; i <= 4; ++i)
+                bars.addItem (juce::String (i), i);
+            bars.setSelectedId (juce::jlimit (1, 4, engine.countInBars.load()), juce::dontSendNotification);
+            bars.onChange = [this] { engine.countInBars = bars.getSelectedId(); };
+            addAndMakeVisible (bars);
 
             label.setText (tr8 ("Volumen del metrónomo"), juce::dontSendNotification);
             label.setFont (juce::FontOptions (11.0f, juce::Font::bold));
             label.setColour (juce::Label::textColourId, Theme::textDim);
             addAndMakeVisible (label);
-            setSize (250, 86);
+            setSize (250, 120);
         }
 
         void resized() override
@@ -2409,12 +2628,17 @@ void MainComponent::showMetronomeOptions()
             volume.setBounds (r.removeFromTop (26));
             r.removeFromTop (6);
             countIn.setBounds (r.removeFromTop (24));
+            r.removeFromTop (4);
+            auto row = r.removeFromTop (24);
+            barsLabel.setBounds (row.removeFromLeft (150));
+            bars.setBounds (row);
         }
 
         AudioEngine& engine;
         juce::Slider volume;
         juce::ToggleButton countIn;
-        juce::Label label;
+        juce::Label label, barsLabel;
+        juce::ComboBox bars;
     };
 
     juce::CallOutBox::launchAsynchronously (std::make_unique<Options> (engine), metronomeButton.getScreenBounds(), nullptr);
@@ -3016,7 +3240,6 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         set ("micPos", cab == 1 ? 0.3f : cab == 2 ? 0.75f : 0.5f);
         set ("micDist", cab == 3 ? 0.8f : 0.2f);
         std::unique_ptr<juce::AudioProcessorEditor> ed (amp.createEditor());
-        ed->setBounds (0, 0, 1258, 433);
         juce::PNGImageFormat png;
         juce::FileOutputStream out (folder.getChildFile ("8-ampli-" + juce::String (cab == 1 ? "1x12" : cab == 2 ? "2x12" : "4x12") + ".png"));
         if (out.openedOk())
@@ -3179,6 +3402,7 @@ void MainComponent::addTrackWithUndo (bool drum)
     if (engine.isRecording())
         return;
     auto* track = addTrack ({}, drum);
+    selectRegion (*track, -1);   // la pista nueva pasa a ser la activa
     if (drum)
     {
         // Batería nueva: estilo según el compás y 8 compases (A A A C B B B C) desde el compás actual

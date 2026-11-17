@@ -142,9 +142,10 @@ public:
     {
         // ---------- Cabecera ----------
         auto header = getLocalBounds().withWidth (Timeline::headerWidth).toFloat();
-        const auto top = trackSelected ? Theme::panelLight.brighter (0.12f) : Theme::panelLight;
+        // La pista activa (donde caerá lo que se importe o grabe) se ve más oscura, cabecera y carril
+        const auto top = trackSelected ? Theme::panelLight.darker (0.35f) : Theme::panelLight;
         g.setGradientFill (juce::ColourGradient (top, 0, header.getY(),
-                                                 trackSelected ? Theme::panel.brighter (0.08f) : Theme::panel, 0, header.getBottom(), false));
+                                                 trackSelected ? Theme::panel.darker (0.35f) : Theme::panel, 0, header.getBottom(), false));
         g.fillRect (header);
         g.setColour (Theme::border);
         g.drawVerticalLine ((int) header.getRight() - 1, header.getY(), header.getBottom());
@@ -174,7 +175,7 @@ public:
 
         // ---------- Carril ----------
         const auto lane = getLaneBounds();
-        g.setColour (Theme::lane);
+        g.setColour (trackSelected ? Theme::lane.darker (0.45f) : Theme::lane);
         g.fillRect (lane);
 
         juce::Graphics::ScopedSaveState state (g);

@@ -22,12 +22,14 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   envíos en filas, volumen/pico, R/I/M/S; todos reservan las mismas filas de envíos y huecos para alinear faders), `MixerHost`.
 - `TrackComponent.h`: cabecera y carril de cada pista (regiones, batería por compases, automatización).
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
-- `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1537x649; los mandos se dibujan girando
-  la propia foto; coordenadas en píxeles de la imagen). Franja inferior: presets, pantalla, puerta de ruido.
+- `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1774x887, diseño propio del autor; no usar
+  imágenes de otros amplis o plugins). Los mandos se dibujan girando la propia imagen del de PRESENCE; coordenadas
+  en píxeles de la imagen (medidas en ella). Franja inferior: presets, pantalla, puerta de ruido.
   Panel derecho (`CabinetPad`, `sideW`): foto de la pantalla (Resources/cab-*-s.jpg, reducidas de cab-*.jpg; el
   blanco del fondo se vuelve transparente al cargar) con el micro arrastrable; posiciones de los conos en
   píxeles de la imagen a 900 de ancho. El sonido del micro (modelo, `micPos`, `micDist`) está en `AmpEffect`
-  (Effects.h); solo suena con pantalla. Las curvas de los micros son aproximaciones con filtros, no medidas.
+  (Effects.h); solo suena con las pantallas 1x12, 2x12 y 4x12 (no con «Sin pantalla» ni con IR). Las curvas
+  de los micros son aproximaciones con filtros, no medidas.
 - `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
   amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).
@@ -41,6 +43,12 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   Opus); si es el adecuado, responder sin avisos. La calidad va primero; después, gastar poco de los límites.
   Orientación: commits, retoques de colores o textos y preguntas cortas → Haiku o Sonnet; funciones nuevas o
   fallos delicados del motor de audio → Opus.
+- Git (la carpeta es un clon de github.com/Xordo1971/SimpleDAW, sesión de `gh` iniciada como Xordo1971):
+  - Al empezar cada sesión, antes de tocar nada: `git pull`.
+  - Al terminar la sesión (o cuando el usuario dé el trabajo por cerrado): `git add` solo de los archivos del
+    proyecto que se hayan cambiado, `git commit` con un mensaje en español que resuma los cambios, y `git push`.
+    No subir los archivos personales sin seguimiento (Grabaciones/, Presets/, SimpleDAW-*.xml, *.tmp,
+    SimpleDAW.exe, .mp3, .sdpreset sueltos de la raíz).
 
 ## Convenciones
 - Textos con acentos: `tr8 ("...")` (Text.h); nunca `juce::String` directo de un literal no ASCII.
@@ -61,7 +69,5 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - Zumbido enorme (Master a +247 dB) al cargar el preset de fábrica «Solo con delay» en el Mac del usuario
   (Clarett+ 2Pre, búfer 32). No se reproduce en las simulaciones. La 1.3.3 añadió la protección/aviso de
   efecto desbocado: el aviso dirá qué efecto falla.
-- Actualizaciones: probada en Mac la actualización automática de 1.6.1 a 1.6.2 (funciona). Falta probarla en Windows.
-  (El guion del Mac se escribe con saltos de línea "
-": con los "
-" por defecto de JUCE, sh falla.)
+- Actualizaciones: probada la actualización automática en Mac (1.6.1 → 1.6.2) y en Windows (2.0.0 → 2.0.1): funciona en los dos.
+  (El guion del Mac se escribe con saltos de línea "\n": con los "\r\n" por defecto de JUCE, sh falla.)

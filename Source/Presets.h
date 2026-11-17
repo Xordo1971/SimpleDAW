@@ -126,6 +126,53 @@ namespace Presets
         return folder().getChildFile (juce::File::createLegalFileName (name.trim()) + extension());
     }
 
+    // ---------- Carpetas (un nivel: subcarpetas dentro de la carpeta de presets) ----------
+    inline juce::Array<juce::File> userFolders()
+    {
+        auto dirs = folder().findChildFiles (juce::File::findDirectories, false);
+        std::sort (dirs.begin(), dirs.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        return dirs;
+    }
+
+    inline juce::Array<juce::File> presetsIn (const juce::File& dir)
+    {
+        auto files = dir.findChildFiles (juce::File::findFiles, false, "*" + extension());
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        return files;
+    }
+
+    // dir: la carpeta de presets o una de sus subcarpetas
+    inline juce::File fileForName (const juce::String& name, const juce::File& dir)
+    {
+        return dir.getChildFile (juce::File::createLegalFileName (name.trim()) + extension());
+    }
+
+    // ---------- Favoritos (por nombre del preset; se guardan en favoritos.txt, en la carpeta de presets) ----------
+    inline juce::File favoritesFile() { return folder().getChildFile ("favoritos.txt"); }
+
+    inline juce::StringArray favorites()
+    {
+        juce::StringArray names;
+        names.addLines (favoritesFile().loadFileAsString());
+        names.trim();
+        names.removeEmptyStrings();
+        names.removeDuplicates (false);
+        return names;
+    }
+
+    inline bool isFavorite (const juce::String& name) { return favorites().contains (name.trim()); }
+
+    inline void setFavorite (const juce::String& name, bool on)
+    {
+        auto names = favorites();
+        names.removeString (name.trim());
+        if (on)
+            names.add (name.trim());
+        favoritesFile().replaceWithText (names.joinIntoString ("\n"));
+    }
+
     // ---------- Presets de fábrica ----------
     inline juce::StringArray factoryXml()
     {
@@ -154,7 +201,7 @@ namespace Presets
                    <PARAM id="bass" value="5"/><PARAM id="mid" value="6"/><PARAM id="treble" value="6"/>
                    <PARAM id="presence" value="5.5"/><PARAM id="master" value="-5"/></EFFECT>
                </SIMPLEDAW_PRESET>)P"),
-            tr8 (R"P(<SIMPLEDAW_PRESET name="Rock (BE + C45)">
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Rock (crunch + bite)">
                  <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="8"/>
                    <PARAM id="bass" value="5.5"/><PARAM id="mid" value="6"/><PARAM id="treble" value="6"/>
                    <PARAM id="c45" value="on"/><PARAM id="master" value="-6"/><PARAM id="gate" value="-70"/></EFFECT>
@@ -179,6 +226,39 @@ namespace Presets
                  <EFFECT type="Delay"><PARAM id="time" value="550"/><PARAM id="feedback" value="0.5"/>
                    <PARAM id="tone" value="3500"/><PARAM id="mix" value="0.3"/></EFFECT>
                  <EFFECT type="Reverb"><PARAM id="size" value="0.9"/><PARAM id="damping" value="0.3"/><PARAM id="mix" value="0.35"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            // Sonidos de guitarristas concretos (aproximaciones hechas a oído, para retocar al gusto)
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Ry Cooder - Feeling Bad Blues">
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="3"/>
+                   <PARAM id="bass" value="5.5"/><PARAM id="mid" value="7"/><PARAM id="treble" value="3.5"/>
+                   <PARAM id="presence" value="3"/><PARAM id="fat" value="on"/><PARAM id="cabinet" value="1x12"/>
+                   <PARAM id="master" value="-5"/><PARAM id="gate" value="-80"/></EFFECT>
+                 <EFFECT type="Delay"><PARAM id="time" value="110"/><PARAM id="feedback" value="0.12"/>
+                   <PARAM id="tone" value="3000"/><PARAM id="mix" value="0.16"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.3"/><PARAM id="damping" value="0.5"/><PARAM id="mix" value="0.1"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            tr8 (R"P(<SIMPLEDAW_PRESET name="Sultans of Swing">
+                 <EFFECT type="Compresor"><PARAM id="threshold" value="-24"/><PARAM id="ratio" value="3"/>
+                   <PARAM id="attack" value="15"/><PARAM id="release" value="150"/><PARAM id="makeup" value="4"/></EFFECT>
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Limpio"/><PARAM id="cleanVol" value="5.5"/>
+                   <PARAM id="cleanTreble" value="7"/><PARAM id="cleanBass" value="4"/><PARAM id="bright" value="on"/>
+                   <PARAM id="voice" value="off"/><PARAM id="presence" value="6"/><PARAM id="master" value="-4"/>
+                   <PARAM id="cabinet" value="2x12"/><PARAM id="gate" value="-75"/></EFFECT>
+                 <EFFECT type="Ecualizador"><PARAM id="lowcut" value="90"/><PARAM id="low" value="-1"/>
+                   <PARAM id="midfreq" value="500"/><PARAM id="mid" value="-3"/><PARAM id="high" value="2.5"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.45"/><PARAM id="damping" value="0.45"/>
+                   <PARAM id="width" value="0.8"/><PARAM id="mix" value="0.16"/></EFFECT>
+               </SIMPLEDAW_PRESET>)P"),
+            tr8 (R"P(<SIMPLEDAW_PRESET name="War Raog - Gwendal">
+                 <EFFECT type="Compresor"><PARAM id="threshold" value="-20"/><PARAM id="ratio" value="2.5"/>
+                   <PARAM id="attack" value="20"/><PARAM id="release" value="180"/><PARAM id="makeup" value="3"/></EFFECT>
+                 <EFFECT type="Ampli"><PARAM id="channel" value="Crunch"/><PARAM id="gain" value="6.5"/>
+                   <PARAM id="bass" value="4.5"/><PARAM id="mid" value="7"/><PARAM id="treble" value="5.5"/>
+                   <PARAM id="presence" value="5"/><PARAM id="master" value="-6"/><PARAM id="cabinet" value="2x12"/>
+                   <PARAM id="gate" value="-62"/></EFFECT>
+                 <EFFECT type="Delay"><PARAM id="time" value="340"/><PARAM id="feedback" value="0.25"/>
+                   <PARAM id="tone" value="4500"/><PARAM id="mix" value="0.16"/></EFFECT>
+                 <EFFECT type="Reverb"><PARAM id="size" value="0.55"/><PARAM id="damping" value="0.45"/><PARAM id="mix" value="0.15"/></EFFECT>
                </SIMPLEDAW_PRESET>)P")
         };
     }

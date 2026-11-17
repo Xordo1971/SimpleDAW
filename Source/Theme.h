@@ -2,6 +2,9 @@
 #include "Text.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#if SIMPLEDAW_HAS_BINARYDATA
+ #include "BinaryData.h"
+#endif
 
 // Paleta y estilo visual de SimpleDAW, con volumen (degradados, relieves y biseles suaves).
 // Dos modos: oscuro (el de siempre) y claro. Los colores neutros cambian con Theme::setLight;
@@ -183,6 +186,24 @@ public:
     SimpleDAWLookAndFeel() : juce::LookAndFeel_V4 (juce::LookAndFeel_V4::getDarkColourScheme())
     {
         applyColours();
+    }
+
+    // Tipografía de la interfaz: Montserrat (Regular y Bold, incluidas en la app). Los tipos de letra con
+    // nombre propio (p. ej. el monoespaciado de las pantallas) no se tocan.
+    juce::Typeface::Ptr getTypefaceForFont (const juce::Font& f) override
+    {
+       #if SIMPLEDAW_HAS_BINARYDATA
+        static const auto regular = juce::Typeface::createSystemTypefaceFor (BinaryData::MontserratRegular_ttf, (size_t) BinaryData::MontserratRegular_ttfSize);
+        static const auto bold    = juce::Typeface::createSystemTypefaceFor (BinaryData::MontserratBold_ttf, (size_t) BinaryData::MontserratBold_ttfSize);
+        const auto name = f.getTypefaceName();
+        if (name.isEmpty() || name == juce::Font::getDefaultSansSerifFontName())
+        {
+            auto& t = f.isBold() ? bold : regular;
+            if (t != nullptr)
+                return t;
+        }
+       #endif
+        return juce::LookAndFeel_V4::getTypefaceForFont (f);
     }
 
     // Pone los colores de la paleta actual (al crearse y al cambiar entre modo claro y oscuro)

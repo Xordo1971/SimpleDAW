@@ -19,6 +19,7 @@
 #include "Updater.h"
 #include "Splash.h"
 #include <map>
+#include <set>
 
 // Barra para cambiar la altura del editor arrastrando
 class DragBar : public juce::Component
@@ -102,7 +103,8 @@ public:
 private:
     // Pistas
     Track* addTrack (const juce::String& name = {}, bool drum = false);
-    void chooseFilesToImport();
+    void chooseFilesToImport (bool toActiveTrack = false);   // por defecto, a una pista nueva
+    void showNotice (const juce::String& text);              // aviso breve en la barra inferior
     void doImport (const juce::StringArray& files, Track* target, juce::int64 position, bool forceMono);
     void toggleEditor();
 
@@ -240,6 +242,7 @@ private:
     void showAudioSettings();
     void refreshDeviceInfo();
     void saveAudioSettings();
+    bool audioFallback = false;   // no se pudo abrir el dispositivo guardado
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
@@ -306,6 +309,15 @@ private:
     juce::Rectangle<int> vZoomLabelArea;
     LcdDisplay lcd;
     juce::Label deviceInfo;
+
+    // Velocidad de práctica (más lento sin cambiar el tono): copias estiradas preparadas en segundo plano
+    juce::ComboBox speedBox;
+    juce::ThreadPool speedPool { 1 };
+    std::atomic<int> speedGeneration { 0 };
+    std::set<const Clip*> slowPending;
+    int slowCheckCounter = 0;
+    void setPracticeSpeed (double speed);
+    void prepareSlowCopies();
 
     Ruler ruler { engine, timeline };
     juce::Viewport viewport;

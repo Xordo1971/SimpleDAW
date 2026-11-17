@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SimpleDAW VERSION 1.9.0)
+project(SimpleDAW VERSION 2.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 # Windows: runtime de Visual C++ enlazado de forma estática (.exe portable)
@@ -36,10 +36,11 @@ target_sources(SimpleDAW PRIVATE
 # Imágenes incluidas dentro de la aplicación (las que existan en Resources/):
 #   logo-app.png   logotipo pequeño de la barra superior
 #   logo-full.png  logotipo completo de la pantalla de arranque
-#   amp-panel.jpg  frontal del ampli integrado (Simpleamp)
+#   amp-panel.jpg  frontal del ampli integrado (Simpleamp), diseño propio
 #   cab-1x12-s.jpg, cab-2x12-s.jpg, cab-4x12-s.jpg  pantallas del ampli (versión reducida de cab-*.jpg)
+#   Montserrat-*.ttf  tipografía de la interfaz (licencia OFL)
 set(SIMPLEDAW_RESOURCES)
-foreach(res logo-app.png logo-full.png amp-panel.jpg cab-1x12-s.jpg cab-2x12-s.jpg cab-4x12-s.jpg)
+foreach(res logo-app.png logo-full.png amp-panel.jpg cab-1x12-s.jpg cab-2x12-s.jpg cab-4x12-s.jpg Montserrat-Regular.ttf Montserrat-Bold.ttf)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/${res}")
         list(APPEND SIMPLEDAW_RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Resources/${res}")
     endif()

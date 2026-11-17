@@ -3,12 +3,49 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
-## 1.9.0
+## 2.1.0
 
 - Ampli: nuevo panel «Pantalla y micro» a la derecha del cabezal, con la foto de la pantalla elegida (1x12, 2x12 o 4x12) y un micrófono delante que se arrastra sobre el altavoz: en el centro del cono suena más brillante y hacia el borde más suave.
 - Siete micros para elegir: Condenser 87, Condenser 414, Dynamic 20, Dynamic 57, Dynamic 421, Dynamic 609 y Ribbon 121, y un regulador de distancia (pegado: más graves y más directo; lejos: más suave). El micro solo suena si hay pantalla.
 - La posición, el modelo y la distancia del micro se guardan con el proyecto y con los presets del ampli. Los presets antiguos siguen sonando casi igual (micro Dynamic 57 por defecto).
-- La ventana del ampli es ahora más ancha para dar sitio al panel.
+- La ventana del ampli es ahora más ancha para dar sitio al panel. Si usas una pantalla por IR, el micro no actúa: la respuesta ya lleva el micro de quien la grabó.
+## 2.0.1
+
+- Frontal nuevo del ampli Simpleamp, con un diseño propio. Los mandos giran y las palancas se mueven sobre la imagen nueva; al apagarlo, la palanca de POWER sube y el piloto se apaga.
+- Arreglo: en Windows las palancas del ampli (FAT, BITE, SAT, VOICE, BRIGHT, CHANNEL y POWER) no se veían cambiar de posición, aunque el sonido sí cambiaba.
+- Nombres más claros: el interruptor C45 pasa a llamarse BITE y el selector de canal muestra «Limpio», «Crunch» o «Lead». Los presets y proyectos guardados siguen funcionando igual. El preset de fábrica «Rock (BE + C45)» se llama ahora «Rock (crunch + bite)».
+
+## 2.0.0
+
+- Velocidad de práctica: junto al afinador hay un selector de velocidad (del 100 % al 50 %). Toda la reproducción va más despacio sin cambiar el tono y sin tocar el audio, para sacar solos poco a poco. La guitarra que entra por la tarjeta suena en tiempo real; el metrónomo y la batería siguen la velocidad. Al elegir una velocidad, cada audio se prepara en segundo plano unos segundos (la barra inferior lo indica). Por debajo del 100 % no se puede grabar, y al exportar la mezcla siempre sale al 100 %.
+- Tomas sin ciclo: si vuelves a grabar empezando exactamente donde empieza una región de la pista (desde un marcador o desde el inicio), lo nuevo se guarda como otra toma de esa región y se elige con clic derecho, igual que las tomas de la grabación en ciclo. Si empiezas en otro punto, queda encima como siempre.
+- Presets del ampli: favoritos (salen arriba del menú, con una estrella), carpetas para organizarlos (se elige la carpeta al guardar) y «Exportar para compartir...», que guarda el ajuste actual donde quieras para mandárselo a otra persona.
+
+## 1.11.0
+
+- Pantallas reales en el ampli: la opción «Pantalla» tiene ahora «IR (archivo)», y un botón «IR...» para cargar una respuesta al impulso (.wav, .aiff o .flac) de un altavoz o una pantalla de verdad. Se guarda con el proyecto; si el archivo se mueve o se borra, la pantalla queda sin IR.
+- Tres efectos nuevos en el menú de efectos: Tremolo (velocidad, profundidad, forma de onda y modo estéreo), Wah (con el pedal a mano, automático con LFO o según cómo se toca) y Puerta de ruido (umbral, ataque, mantener, relajación y reducción).
+- Al importar un audio, la pista nueva queda en «Sin entrada» en vez de escuchar la entrada 1 de la tarjeta.
+
+## 1.10.0
+
+- «Importar audio» (Ctrl/Cmd+I) pone ahora el audio en una pista nueva, desde el principio, y avisa en la barra inferior de a qué pista ha ido (que pasa a ser la pista activa). Así no se pisa por error la pista donde estabas trabajando. Para importar a la pista activa, desde el cursor, hay una opción nueva: «Pista > Importar a la pista activa» (Ctrl/Cmd+Mayús+I).
+- Clic derecho en un marcador > «Repetir esta sección»: activa el ciclo desde ese marcador hasta el siguiente (o hasta el final de lo grabado) para repetir un pasaje sin tocar nada más.
+- La precuenta al grabar puede ser de 1 a 4 compases (clic derecho en el botón del metrónomo) y se guarda con el proyecto.
+
+## 1.9.0
+
+- La pista activa se ve más oscura (cabecera y carril), para saber a cuál va lo que importas o grabas. Al añadir una pista nueva pasa a ser la activa automáticamente.
+- Tres presets de fábrica nuevos para el ampli: «Ry Cooder - Feeling Bad Blues», «Sultans of Swing» y «War Raog - Gwendal». Son aproximaciones hechas a oído: retócalas al gusto.
+- Arreglo: al cerrar la ventana del ampli y volver a abrirla salía un panel de barras en lugar de la carátula del Simpleamp. Ahora sale siempre la carátula.
+
+## 1.8.2
+
+- Nueva tipografía: toda la interfaz (menús, botones, pistas, mezclador, ventanas emergentes) usa ahora Montserrat, con la versión Bold para los textos en negrita y la Regular para el resto. Va incluida en la aplicación, no hace falta instalar nada. Las pantallas de tiempo y tempo conservan su letra de siempre.
+
+## 1.8.1
+
+- Arranque más seguro con el audio: si no se puede abrir el dispositivo guardado (por ejemplo un driver ASIO de otro fabricante sin su tarjeta conectada), SimpleDAW ya no prueba otros a ciegas. Reintenta una vez, usa el dispositivo por defecto del sistema, avisa de cuál no se pudo abrir y conserva tu configuración guardada hasta que vuelvas a elegir el dispositivo en Audio.
 
 ## 1.8.0
 
