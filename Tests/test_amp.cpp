@@ -90,5 +90,27 @@ int main()
         for (auto* p : { "fat", "c45", "sat", "voice", "bright" })
         { extra = { { p, 1.0f } }; run (2, 10, 0, 0.5f, b); extra.clear(); CHECK (peakOf (b) > 0.05f && peakOf (b) < 1.5f, "%s activado: nivel sensato (pico %.2f)", p, peakOf (b)); }
     }
+    printf ("Ampli: micros, posicion y distancia\n");
+    {
+        std::vector<float> a, b;
+        auto hiBand = [&] (const std::vector<float>& y) { double e = 0; for (int k = 12; k <= 25; ++k) { const double v = amplitudeAt (y.data() + 24000, 19200, 196.0 * k, sr); e += v * v; } return std::sqrt (e); };
+        std::vector<double> hi;
+        for (int m = 0; m < 7; ++m)
+        {
+            extra = { { "mic", (float) m } }; run (1, 6, 2, 0.3f, a); extra.clear();
+            CHECK (peakOf (a) > 0.05f && peakOf (a) < 1.2f, "micro %d: nivel sensato y sin valores raros (pico %.2f)", m, peakOf (a));
+            hi.push_back (hiBand (a));
+        }
+        CHECK (hi[1] > hi[6] && hi[5] > hi[2], "Condenser 414 y Dynamic 609 mas brillantes que Ribbon 121 y Dynamic 20");
+        extra = { { "mic", 3.0f }, { "micPos", 0.0f } }; run (1, 6, 2, 0.3f, a);
+        extra = { { "mic", 3.0f }, { "micPos", 1.0f } }; run (1, 6, 2, 0.3f, b); extra.clear();
+        CHECK (hiBand (b) < hiBand (a), "micro en el borde del cono: menos agudos (%.4f -> %.4f)", hiBand (a), hiBand (b));
+        extra = { { "mic", 3.0f }, { "micDist", 0.0f } }; run (1, 6, 2, 0.3f, a);
+        extra = { { "mic", 3.0f }, { "micDist", 1.0f } }; run (1, 6, 2, 0.3f, b); extra.clear();
+        CHECK (hiBand (b) < hiBand (a), "micro lejos: menos agudos (%.4f -> %.4f)", hiBand (a), hiBand (b));
+        extra = { { "mic", 0.0f } }; run (1, 6, 0, 0.3f, a); extra = { { "mic", 6.0f } }; run (1, 6, 0, 0.3f, b); extra.clear();
+        float d = 0; for (size_t i = 0; i < a.size(); ++i) d = std::max (d, std::abs (a[i] - b[i]));
+        CHECK (d < 1e-6f, "sin pantalla el micro no suena (dif. %.7f)", d);
+    }
     printf ("%s (%d fallos)\n", failures ? "HAY FALLOS" : "TODO BIEN", failures);
 }

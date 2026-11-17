@@ -511,6 +511,11 @@ public:
         presence = param ("presence", "Presencia", 0.0f, 10.0f, 5.0f);
         master   = param ("master", "Volumen", -30.0f, 6.0f, -3.0f, "dB");
         cabinet  = choice ("cabinet", "Pantalla", { "Sin pantalla", "1x12", "2x12", "4x12" }, 3);
+        // Micrófono delante de la pantalla (solo suena si hay pantalla): modelo, posición y distancia
+        mic      = choice ("mic", "Micro", { "Condenser 87", "Condenser 414", "Dynamic 20", "Dynamic 57",
+                                              "Dynamic 421", "Dynamic 609", "Ribbon 121" }, 3);
+        micPos   = param ("micPos", tr8 ("Posición del micro"), 0.0f, 1.0f, 0.3f);   // 0 = centro del cono, 1 = borde
+        micDist  = param ("micDist", "Distancia del micro", 0.0f, 1.0f, 0.2f); // 0 = pegado, 1 = lejos
         gate     = param ("gate", "Puerta de ruido", -90.0f, -30.0f, -72.0f, "dB");
         // Canal limpio con sus propios controles (como un ampli de dos canales)
         cleanVol    = param ("cleanVol", "Volumen (limpio)", 0.0f, 10.0f, 5.0f);
@@ -545,7 +550,7 @@ private:
     {
         oversampling = std::make_unique<juce::dsp::Oversampling<float>> (2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true);
         oversampling->initProcessing (spec.maximumBlockSize);
-        for (auto& ch : chains) { for (auto& f : ch.pre) f.reset(); for (auto& f : ch.inter) f.reset(); for (auto& f : ch.tone) f.reset(); for (auto& f : ch.cab) f.reset(); }
+        for (auto& ch : chains) { for (auto& f : ch.pre) f.reset(); for (auto& f : ch.inter) f.reset(); for (auto& f : ch.tone) f.reset(); for (auto& f : ch.cab) f.reset(); for (auto& f : ch.mic) f.reset(); }
         gateEnv[0] = gateEnv[1] = 0.0f;
         gateGain[0] = gateGain[1] = 1.0f;
         lastKey = {};
@@ -555,9 +560,10 @@ private:
     // Recalcula los filtros solo cuando cambian los controles
     void updateFilters()
     {
-        const std::array<float, 13> key { (float) channel->getIndex(), bass->get(), mid->get(), treble->get(), presence->get(),
+        const std::array<float, 16> key { (float) channel->getIndex(), bass->get(), mid->get(), treble->get(), presence->get(),
                                           (float) cabinet->getIndex(), (float) sampleRate, cleanBass->get(), cleanTreble->get(),
-                                          (float) fat->get(), (float) c45->get(), (float) voice->get(), (float) bright->get() };
+                                          (float) fat->get(), (float) c45->get(), (float) voice->get(), (float) bright->get(),
+                                          (float) mic->getIndex(), micPos->get(), micDist->get() };
         if (key == lastKey)
             return;
         lastKey = key;
@@ -602,8 +608,37 @@ private:
             default: break;
         }
 
+        // Micro: cada modelo es una curva sencilla (graves, medios, brillo) y el sitio donde se pone
+        // la modifica: hacia el borde del cono se pierden agudos; lejos se pierden graves de
+        // cercanía y agudos, y se oye más la caja. Son aproximaciones, no medidas reales.
+        struct MicCurve { float lowHz, lowDb, midHz, midQ, midDb, hiHz, hiDb, brightHz; };
+        static const MicCurve curves[] = {
+            // 0 Condenser 87: amplio y abierto, algo de graves
+            { 100.0f,  1.5f, 3500.0f, 0.8f,  1.5f, 6500.0f,  2.5f, 1.15f },
+            // 1 Condenser 414: brillante y suave
+            { 120.0f,  1.0f, 4500.0f, 0.8f,  2.0f, 7000.0f,  3.0f, 1.25f },
+            // 2 Dynamic 20: grueso, sin brillo, muy graves
+            {  90.0f,  3.0f,  400.0f, 1.0f, -1.5f, 4500.0f, -2.0f, 0.90f },
+            // 3 Dynamic 57: el clásico, medios con mordiente
+            { 100.0f,  0.5f, 4800.0f, 1.0f,  3.5f, 6000.0f,  0.0f, 1.00f },
+            // 4 Dynamic 421: pegada, graves llenos y medios algo ahuecados
+            { 100.0f,  2.0f,  600.0f, 1.0f, -2.0f, 3800.0f,  3.0f, 1.05f },
+            // 5 Dynamic 609: brillante y rápido
+            { 110.0f, -1.0f, 4200.0f, 1.0f,  4.0f, 6500.0f,  1.5f, 1.15f },
+            // 6 Ribbon 121: oscuro y redondo
+            { 150.0f,  3.0f, 3000.0f, 0.8f, -1.0f, 5500.0f, -4.0f, 0.85f },
+        };
+        const auto& mc = curves[juce::jlimit (0, 6, mic->getIndex())];
+        const float pos = micPos->get(), dist = micDist->get();
+        auto m0 = Coefs::makeLowShelf  (sr, mc.lowHz, 0.7f, db (mc.lowDb + (1.0f - dist) * 3.0f - dist * 3.0f));   // efecto de cercanía
+        auto m1 = Coefs::makePeakFilter (sr, mc.midHz, mc.midQ, db (mc.midDb * (1.0f - 0.7f * pos)));              // el borde del cono suena menos "mordiente"
+        auto m2 = Coefs::makeHighShelf (sr, mc.hiHz, 0.7f, db (mc.hiDb - pos * 4.5f - dist * 2.5f));
+        auto m3 = Coefs::makeLowPass   (sr, juce::jlimit (3000.0, 0.45 * sr, 6200.0 * mc.brightHz * (1.0 - 0.35 * pos) * (1.0 - 0.2 * dist)), 0.7f);
+
         for (auto& c : chains)
         {
+            *c.mic[0].coefficients = *m0; *c.mic[1].coefficients = *m1;
+            *c.mic[2].coefficients = *m2; *c.mic[3].coefficients = *m3;
             *c.pre[0].coefficients = *pre0;  *c.pre[1].coefficients = *pre1;
             *c.pre[2].coefficients = *pre2;  *c.pre[3].coefficients = *pre3;
             *c.inter[0].coefficients = *int0; *c.inter[1].coefficients = *int1;
@@ -698,7 +733,10 @@ private:
                 float x = d[i];
                 for (auto& f : chain.tone) x = f.processSample (x);
                 if (useCab)
+                {
                     for (auto& f : chain.cab) x = f.processSample (x);
+                    for (auto& f : chain.mic) x = f.processSample (x);
+                }
                 d[i] = x * out;
             }
         }
@@ -712,19 +750,20 @@ private:
         std::array<Filter, 2> inter;
         std::array<Filter, 4> tone;
         std::array<Filter, maxCab> cab;
+        std::array<Filter, 4> mic;
         Chain()
         {
             auto init = [] (auto& arr) { for (auto& f : arr) f.coefficients = Coefs::makeAllPass (44100.0, 1000.0); };
-            init (pre); init (inter); init (tone); init (cab);
+            init (pre); init (inter); init (tone); init (cab); init (mic);
         }
     };
 
-    juce::AudioParameterChoice *channel, *cabinet;
-    juce::AudioParameterFloat *gain, *bass, *mid, *treble, *presence, *master, *gate, *cleanVol, *cleanTreble, *cleanBass;
+    juce::AudioParameterChoice *channel, *cabinet, *mic;
+    juce::AudioParameterFloat *gain, *bass, *mid, *treble, *presence, *master, *micPos, *micDist, *gate, *cleanVol, *cleanTreble, *cleanBass;
     juce::AudioParameterBool *fat, *c45, *sat, *voice, *bright, *power;
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
     std::array<Chain, 2> chains;
-    std::array<float, 13> lastKey {};
+    std::array<float, 16> lastKey {};
     float gateEnv[2] {}, gateGain[2] { 1.0f, 1.0f };
     bool gateOpen[2] { true, true };
     int gateHold[2] {};

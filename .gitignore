@@ -4,3 +4,8 @@ ThirdParty/asiosdk/
 .DS_Store
 *.user
 .vs/
+
+# Originales grandes de las pantallas del ampli (la app usa las reducidas cab-*-s.jpg)
+Resources/cab-1x12.jpg
+Resources/cab-2x12.jpg
+Resources/cab-4x12.jpg

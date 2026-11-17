@@ -3000,6 +3000,33 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         saveDialog (ask, "6-aviso.png");
     }
 
+    // Frontal del ampli con cada pantalla y un micro distinto (8-ampli-1x12.png, 8-ampli-2x12.png, 8-ampli-4x12.png)
+    for (int cab = 1; cab <= 3; ++cab)
+    {
+        AmpEffect amp;
+        auto set = [&amp] (const char* id, float plain)
+        {
+            for (auto* p : amp.getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+                    if (r->paramID == id)
+                        r->setValueNotifyingHost (r->convertTo0to1 (plain));
+        };
+        set ("cabinet", (float) cab);
+        set ("mic", cab == 1 ? 3.0f : cab == 2 ? 0.0f : 6.0f);
+        set ("micPos", cab == 1 ? 0.3f : cab == 2 ? 0.75f : 0.5f);
+        set ("micDist", cab == 3 ? 0.8f : 0.2f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (amp.createEditor());
+        ed->setBounds (0, 0, 1258, 433);
+        juce::PNGImageFormat png;
+        juce::FileOutputStream out (folder.getChildFile ("8-ampli-" + juce::String (cab == 1 ? "1x12" : cab == 2 ? "2x12" : "4x12") + ".png"));
+        if (out.openedOk())
+        {
+            out.setPosition (0);
+            out.truncate();
+            png.writeImageToStream (ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f), out);
+        }
+    }
+
     const bool labels = showButtonLabels;
     save ("1-barra.png");
     if (! labels) labelsToggle.triggerClick();

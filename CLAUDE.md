@@ -24,6 +24,10 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
 - `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1537x649; los mandos se dibujan girando
   la propia foto; coordenadas en píxeles de la imagen). Franja inferior: presets, pantalla, puerta de ruido.
+  Panel derecho (`CabinetPad`, `sideW`): foto de la pantalla (Resources/cab-*-s.jpg, reducidas de cab-*.jpg; el
+  blanco del fondo se vuelve transparente al cargar) con el micro arrastrable; posiciones de los conos en
+  píxeles de la imagen a 900 de ancho. El sonido del micro (modelo, `micPos`, `micDist`) está en `AmpEffect`
+  (Effects.h); solo suena con pantalla. Las curvas de los micros son aproximaciones con filtros, no medidas.
 - `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
   amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).

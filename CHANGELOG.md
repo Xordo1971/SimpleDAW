@@ -3,6 +3,13 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 1.9.0
+
+- Ampli: nuevo panel «Pantalla y micro» a la derecha del cabezal, con la foto de la pantalla elegida (1x12, 2x12 o 4x12) y un micrófono delante que se arrastra sobre el altavoz: en el centro del cono suena más brillante y hacia el borde más suave.
+- Siete micros para elegir: Condenser 87, Condenser 414, Dynamic 20, Dynamic 57, Dynamic 421, Dynamic 609 y Ribbon 121, y un regulador de distancia (pegado: más graves y más directo; lejos: más suave). El micro solo suena si hay pantalla.
+- La posición, el modelo y la distancia del micro se guardan con el proyecto y con los presets del ampli. Los presets antiguos siguen sonando casi igual (micro Dynamic 57 por defecto).
+- La ventana del ampli es ahora más ancha para dar sitio al panel.
+
 ## 1.8.0
 
 - Modo claro: en «Ver > Modo claro» la aplicación entera pasa a colores claros (barra, pistas, editor, mezclador, ventanas emergentes y menús), y se vuelve al modo oscuro desmarcándolo. Hay también un botón con un sol/luna junto al afinador que lo activa y desactiva. El cambio es inmediato y se recuerda al volver a abrir SimpleDAW. La ventana tiene ahora 50 píxeles más de ancho mínimo para que quepa el botón nuevo. Los medidores y las cajas de volumen siguen oscuros para que se lean bien.
