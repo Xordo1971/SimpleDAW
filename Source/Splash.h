@@ -150,10 +150,14 @@ public:
         g.setColour (juce::Colours::white.withAlpha (0.55f * waveIn));
         g.drawText (status, juce::Rectangle<float> (22.0f, 374.0f, 300.0f, 18.0f), juce::Justification::centredLeft);
 
-        g.setFont (juce::FontOptions (11.0f));
         g.setColour (juce::Colours::white.withAlpha (0.5f * waveIn));
-        g.drawText (tr8 ("Creado por Paco Frade  ·  ") + version,
-                    juce::Rectangle<float> (330.0f, 374.0f, 288.0f, 18.0f), juce::Justification::centredRight);
+        {
+            juce::AttributedString credit;
+            credit.setJustification (juce::Justification::centredRight);
+            credit.append (tr8 ("Creado por Paco Frade  ·  ") + version, juce::FontOptions (11.5f),
+                           juce::Colours::white.withAlpha (0.5f * waveIn));
+            credit.draw (g, juce::Rectangle<float> (330.0f, 374.0f, 288.0f, 18.0f));
+        }
 
         // Línea de progreso amarilla (avanza durante la duración mínima)
         const float progress = juce::jlimit (0.0f, 1.0f, t / minDuration);

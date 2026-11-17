@@ -3224,6 +3224,23 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         saveDialog (ask, "6-aviso.png");
     }
 
+    // Pantalla de arranque / Acerca de (9-arranque.png), ya con la animación terminada
+    {
+        auto splashShot = std::make_shared<std::unique_ptr<SplashWindow>> (std::make_unique<SplashWindow> ("v" + Updater::currentVersion(), true));
+        juce::Timer::callAfterDelay (1500, [splashShot, folder]
+        {
+            juce::PNGImageFormat png;
+            juce::FileOutputStream out (folder.getChildFile ("9-arranque.png"));
+            if (out.openedOk() && *splashShot != nullptr)
+            {
+                out.setPosition (0);
+                out.truncate();
+                png.writeImageToStream ((*splashShot)->createComponentSnapshot ((*splashShot)->getLocalBounds(), true, 1.0f), out);
+            }
+            splashShot->reset();
+        });
+    }
+
     // Frontal del ampli con cada pantalla y un micro distinto (8-ampli-1x12.png, 8-ampli-2x12.png, 8-ampli-4x12.png)
     for (int cab = 1; cab <= 3; ++cab)
     {
