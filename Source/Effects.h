@@ -587,6 +587,8 @@ private:
         for (auto& ch : chains) { for (auto& f : ch.pre) f.reset(); for (auto& f : ch.inter) f.reset(); for (auto& f : ch.tone) f.reset(); for (auto& f : ch.cab) f.reset(); for (auto& f : ch.mic) f.reset(); }
         gateEnv[0] = gateEnv[1] = 0.0f;
         gateGain[0] = gateGain[1] = 1.0f;
+        for (auto& b : echo) b.fill (0.0f);
+        echoPos[0] = echoPos[1] = 0;
         lastKey = {};
         updateFilters();
     }
@@ -642,37 +644,40 @@ private:
             default: break;
         }
 
-        // Micro: cada modelo es una curva sencilla (graves, medios, brillo) y el sitio donde se pone
-        // la modifica: hacia el borde del cono se pierden agudos; lejos se pierden graves de
-        // cercanía y agudos, y se oye más la caja. Son aproximaciones, no medidas reales.
-        struct MicCurve { float lowHz, lowDb, midHz, midQ, midDb, hiHz, hiDb, brightHz; };
-        static const MicCurve curves[] = {
-            // 0 Condenser 87: amplio y abierto, algo de graves
-            { 100.0f,  1.5f, 3500.0f, 0.8f,  1.5f, 6500.0f,  2.5f, 1.15f },
-            // 1 Condenser 414: brillante y suave
-            { 120.0f,  1.0f, 4500.0f, 0.8f,  2.0f, 7000.0f,  3.0f, 1.25f },
-            // 2 Dynamic 20: grueso, sin brillo, muy graves
-            {  90.0f,  3.0f,  400.0f, 1.0f, -1.5f, 4500.0f, -2.0f, 0.90f },
-            // 3 Dynamic 57: el clásico, medios con mordiente
-            { 100.0f,  0.5f, 4800.0f, 1.0f,  3.5f, 6000.0f,  0.0f, 1.00f },
-            // 4 Dynamic 421: pegada, graves llenos y medios algo ahuecados
-            { 100.0f,  2.0f,  600.0f, 1.0f, -2.0f, 3800.0f,  3.0f, 1.05f },
-            // 5 Dynamic 609: brillante y rápido
-            { 110.0f, -1.0f, 4200.0f, 1.0f,  4.0f, 6500.0f,  1.5f, 1.15f },
-            // 6 Ribbon 121: oscuro y redondo
-            { 150.0f,  3.0f, 3000.0f, 0.8f, -1.0f, 5500.0f, -4.0f, 0.85f },
+        // Micro delante del altavoz. Imita lo que pasa con micros de verdad, en la zona donde se oye la guitarra:
+        //  - Modelo: efecto de proximidad propio, "cuerpo" (graves-medios), pico de presencia y brillo.
+        //  - Posición: en el centro del cono suena brillante y agresivo (2-5 kHz); hacia el borde, oscuro.
+        //  - Distancia: pegado, más graves (proximidad); lejos, menos graves y agudos, y el rebote en el
+        //    suelo (un eco cortísimo, ver process) que da color de sala.
+        struct MicModel { float proximityDb, bodyHz, bodyQ, bodyDb, presenceHz, presenceQ, presenceDb, airHz, airDb; };
+        static const MicModel models[] = {
+            { 5.0f, 200.0f, 0.7f,  1.0f, 4500.0f, 0.7f,  2.0f, 8000.0f,  3.0f },   // 0 Condenser 87: lleno y abierto, con aire
+            { 4.0f, 250.0f, 0.7f,  0.0f, 5000.0f, 0.8f,  4.0f, 8000.0f,  4.0f },   // 1 Condenser 414: brillante y detallado
+            { 1.5f, 300.0f, 0.7f,  1.5f, 3000.0f, 0.7f, -2.0f, 5000.0f, -4.0f },   // 2 Dynamic 20: cálido, oscuro, casi sin proximidad
+            { 5.0f, 150.0f, 0.7f, -1.5f, 4200.0f, 1.2f,  6.0f, 8000.0f, -3.0f },   // 3 Dynamic 57: el clásico, pico de medios-agudos
+            { 5.0f, 500.0f, 1.0f, -4.0f, 4000.0f, 0.9f,  4.0f, 7000.0f,  1.0f },   // 4 Dynamic 421: medios ahuecados, pegada
+            { 4.0f, 250.0f, 0.7f, -3.0f, 3000.0f, 0.8f,  6.0f, 6000.0f,  2.0f },   // 5 Dynamic 609: fino y chillón en medios-agudos
+            { 8.0f, 250.0f, 0.7f,  2.0f, 3000.0f, 0.7f, -4.0f, 4000.0f, -7.0f },   // 6 Ribbon 121: oscuro, redondo, mucha proximidad
         };
-        const auto& mc = curves[juce::jlimit (0, 6, mic->getIndex())];
+        const auto& mm = models[juce::jlimit (0, 6, mic->getIndex())];
         const float pos = micPos->get(), dist = micDist->get();
-        auto m0 = Coefs::makeLowShelf  (sr, mc.lowHz, 0.7f, db (mc.lowDb + (1.0f - dist) * 3.0f - dist * 3.0f));   // efecto de cercanía
-        auto m1 = Coefs::makePeakFilter (sr, mc.midHz, mc.midQ, db (mc.midDb * (1.0f - 0.7f * pos)));              // el borde del cono suena menos "mordiente"
-        auto m2 = Coefs::makeHighShelf (sr, mc.hiHz, 0.7f, db (mc.hiDb - pos * 4.5f - dist * 2.5f));
-        auto m3 = Coefs::makeLowPass   (sr, juce::jlimit (3000.0, 0.45 * sr, 6200.0 * mc.brightHz * (1.0 - 0.35 * pos) * (1.0 - 0.2 * dist)), 0.7f);
+        const float near = std::pow (1.0f - dist, 1.5f);
+        auto m0 = Coefs::makeLowShelf   (sr, 200.0, 0.7f, db (mm.proximityDb * near - 3.0f * dist));
+        auto m1 = Coefs::makePeakFilter (sr, mm.bodyHz, mm.bodyQ, db (mm.bodyDb));
+        auto m2 = Coefs::makePeakFilter (sr, mm.presenceHz, mm.presenceQ, db (mm.presenceDb * (1.0f - 0.5f * pos)));
+        auto m3 = Coefs::makePeakFilter (sr, 3500.0, 0.8f, db (4.0f - 11.0f * pos));   // centro del cono / borde
+        auto m4 = Coefs::makeHighShelf  (sr, mm.airHz, 0.7f, db (mm.airDb));
+        auto m5 = Coefs::makeLowPass    (sr, juce::jlimit (2500.0, 0.45 * sr, 6000.0 * (1.0 - 0.5 * pos) * (1.0 - 0.25 * dist)), 0.7f);
+        std::array<juce::ReferenceCountedObjectPtr<Coefs>, 6> micCoefs { m0, m1, m2, m3, m4, m5 };
+
+        // Rebote en el suelo: llega de 0,4 a 4 ms tarde y más fuerte cuanto más lejos está el micro
+        echoDelay = juce::jlimit (1, echoSize - 1, (int) std::round ((0.0004 + 0.0036 * dist) * sr));
+        echoGain = 0.45f * dist;
 
         for (auto& c : chains)
         {
-            *c.mic[0].coefficients = *m0; *c.mic[1].coefficients = *m1;
-            *c.mic[2].coefficients = *m2; *c.mic[3].coefficients = *m3;
+            for (size_t i = 0; i < c.mic.size(); ++i)
+                *c.mic[i].coefficients = *micCoefs[i];
             *c.pre[0].coefficients = *pre0;  *c.pre[1].coefficients = *pre1;
             *c.pre[2].coefficients = *pre2;  *c.pre[3].coefficients = *pre3;
             *c.inter[0].coefficients = *int0; *c.inter[1].coefficients = *int1;
@@ -771,6 +776,12 @@ private:
                 {
                     for (auto& f : chain.cab) x = f.processSample (x);
                     for (auto& f : chain.mic) x = f.processSample (x);
+                    // Micro lejos: se suma el rebote en el suelo (filtro de peine: color de sala)
+                    auto& buf = echo[(size_t) c];
+                    buf[(size_t) echoPos[c]] = x;
+                    const float late = buf[(size_t) ((echoPos[c] - echoDelay + echoSize) % echoSize)];
+                    echoPos[c] = (echoPos[c] + 1) % echoSize;
+                    x = (x + echoGain * late) / (1.0f + echoGain);
                 }
                 d[i] = useIr ? x : x * out;   // con IR, el volumen se aplica después de la convolución
             }
@@ -792,7 +803,7 @@ private:
         std::array<Filter, 2> inter;
         std::array<Filter, 4> tone;
         std::array<Filter, maxCab> cab;
-        std::array<Filter, 4> mic;
+        std::array<Filter, 6> mic;
         Chain()
         {
             auto init = [] (auto& arr) { for (auto& f : arr) f.coefficients = Coefs::makeAllPass (44100.0, 1000.0); };
@@ -812,6 +823,10 @@ private:
     float gateEnv[2] {}, gateGain[2] { 1.0f, 1.0f };
     bool gateOpen[2] { true, true };
     int gateHold[2] {};
+    static constexpr int echoSize = 2048;   // hasta 4 ms a 192 kHz
+    std::array<std::array<float, echoSize>, 2> echo {};
+    int echoPos[2] {}, echoDelay = 1;
+    float echoGain = 0.0f;
 };
 
 // ---------------------------------------------------------------- Trémolo

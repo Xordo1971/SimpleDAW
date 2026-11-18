@@ -101,13 +101,16 @@ int main()
             CHECK (peakOf (a) > 0.05f && peakOf (a) < 1.2f, "micro %d: nivel sensato y sin valores raros (pico %.2f)", m, peakOf (a));
             hi.push_back (hiBand (a));
         }
-        CHECK (hi[1] > hi[6] && hi[5] > hi[2], "Condenser 414 y Dynamic 609 mas brillantes que Ribbon 121 y Dynamic 20");
+        // Las diferencias tienen que oírse, no solo existir (antes eran de menos de 1,5 dB y no se notaban)
+        CHECK (hi[1] > 2.0 * hi[6] && hi[5] > 1.5 * hi[2], "Condenser 414 y Dynamic 609 claramente mas brillantes que Ribbon 121 y Dynamic 20 (%.4f/%.4f, %.4f/%.4f)", hi[1], hi[6], hi[5], hi[2]);
         extra = { { "mic", 3.0f }, { "micPos", 0.0f } }; run (1, 6, 2, 0.3f, a);
         extra = { { "mic", 3.0f }, { "micPos", 1.0f } }; run (1, 6, 2, 0.3f, b); extra.clear();
-        CHECK (hiBand (b) < hiBand (a), "micro en el borde del cono: menos agudos (%.4f -> %.4f)", hiBand (a), hiBand (b));
+        CHECK (hiBand (b) < 0.5 * hiBand (a), "micro en el borde del cono: claramente menos agudos (%.4f -> %.4f)", hiBand (a), hiBand (b));
         extra = { { "mic", 3.0f }, { "micDist", 0.0f } }; run (1, 6, 2, 0.3f, a);
         extra = { { "mic", 3.0f }, { "micDist", 1.0f } }; run (1, 6, 2, 0.3f, b); extra.clear();
         CHECK (hiBand (b) < hiBand (a), "micro lejos: menos agudos (%.4f -> %.4f)", hiBand (a), hiBand (b));
+        auto lowBand = [&] (const std::vector<float>& y) { double e = 0; for (int k = 1; k <= 2; ++k) { const double v = amplitudeAt (y.data() + 24000, 19200, 196.0 * k, sr); e += v * v; } return std::sqrt (e); };
+        CHECK (lowBand (a) > 1.3 * lowBand (b), "micro pegado: mas graves que lejos (efecto de proximidad) (%.4f -> %.4f)", lowBand (a), lowBand (b));
         extra = { { "mic", 0.0f } }; run (1, 6, 0, 0.3f, a); extra = { { "mic", 6.0f } }; run (1, 6, 0, 0.3f, b); extra.clear();
         float d = 0; for (size_t i = 0; i < a.size(); ++i) d = std::max (d, std::abs (a[i] - b[i]));
         CHECK (d < 1e-6f, "sin pantalla el micro no suena (dif. %.7f)", d);

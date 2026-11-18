@@ -3,6 +3,13 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.2.1
+
+- Ampli: el micro de la pantalla ahora se oye. Antes sus cambios caían en agudos que la pantalla ya había quitado y no se notaban.
+- Posición: en el centro del cono suena brillante y agresivo; hacia el borde, claramente más oscuro.
+- Distancia: pegado, más graves (efecto de proximidad); lejos, menos graves y agudos y el rebote en el suelo, que da color de sala.
+- Cada micro tiene su carácter: el 57 con su pico de medios-agudos, el 421 con medios ahuecados, el 609 chillón, el RE20 cálido y casi sin proximidad, la cinta 121 oscura y con muchos graves de cerca, y los condensadores 87 y 414 más abiertos.
+
 ## 2.2.0
 
 - Cuatro temas nuevos de aspecto, en «Ver > Tema»: Grafito (oscuro con el amarillo de la marca), Papel (crema cálido con acento terracota), Medianoche (azul oscuro con cian) y Analógico (nogal y latón). Cambian en caliente y se recuerdan al reabrir.
