@@ -61,6 +61,7 @@ public:
     void showInsertOptions (Track&, Section, int slot, juce::Component& target) override;
     void openInsertEditor (Track&, Section, int slot) override;
     void showInsertPanel (Track&, juce::Component& target) override;
+    void openChannelEq (Track&) override;
     void selectRegion (Track&, juce::int64 regionId) override;
     void openAudioEditor() override;
     void transposeRegion (Track&, juce::int64 regionId) override;
@@ -329,7 +330,13 @@ private:
     juce::OwnedArray<TrackComponent> trackComponents;
 
     std::unique_ptr<ChannelStrip> masterStrip;   // canal master fijo a la izquierda
-    std::unique_ptr<MixerComponent> mixer;
+    std::unique_ptr<MixerComponent> mixer;   // panel junto al master: solo la pista seleccionada
+    std::unique_ptr<MixerWindow> mixerWindow;   // mezclador completo en su ventana
+    juce::Rectangle<int> mixerWindowBounds;
+    juce::File captureFolder;   // SIMPLEDAW_CAPTURA
+    Track* panelTrack() const;
+    void updateMixerPanel();
+    void toggleMixerWindow();
     bool mixerOpen = false;          // el mezclador se despliega junto al master
     float mixerReveal = 0.0f;        // 0 = oculto, 1 = desplegado (animado)
     juce::TimedCallback mixerAnimation { [this] { animateMixer(); } };

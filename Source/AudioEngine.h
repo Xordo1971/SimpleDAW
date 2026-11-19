@@ -167,6 +167,7 @@ struct Track
     // El hilo de audio solo los lee (con try-lock).
     std::vector<Region> regions;
     std::vector<std::unique_ptr<Insert>> inserts[2];
+    std::unique_ptr<juce::AudioProcessor> eq;   // EQ de canal (ChannelEqEffect), antes de las inserciones; nullptr = sin EQ
     juce::AudioFormatWriter::ThreadedWriter* recorder = nullptr;
     juce::int64 recordStart = 0;
     juce::int64 recordEnd = std::numeric_limits<juce::int64>::max();   // punch out
@@ -414,6 +415,18 @@ public:
             slot = (int) list.size();
         list.insert (list.begin() + slot, std::move (ins));
         return true;
+    }
+
+    // Pone (o quita, con nullptr) el EQ de canal. El llamador debe cerrar antes la ventana del anterior.
+    void setEq (Track& t, std::unique_ptr<juce::AudioProcessor> p)
+    {
+        if (p != nullptr)
+            prepareProcessor (*p);
+        {
+            const juce::ScopedLock sl (lock);
+            std::swap (t.eq, p);
+        }
+        // el anterior se destruye aquí, fuera del lock
     }
 
     // Quita una inserción. El llamador debe cerrar antes su ventana de edición.
@@ -1012,6 +1025,11 @@ public:
                         ins->processor->releaseResources();
                         prepareProcessor (*ins->processor);   // reinicia colas de delay, reverb...
                     }
+                if (t.eq != nullptr)
+                {
+                    t.eq->releaseResources();
+                    prepareProcessor (*t.eq);
+                }
                 if (t.kit != nullptr)
                     t.kit->prepare (sampleRate.load() > 0 ? sampleRate.load() : 48000.0);
             };
@@ -1423,6 +1441,8 @@ public:
             for (auto& list : t.inserts)
                 for (auto& ins : list)
                     prepareProcessor (*ins->processor);
+            if (t.eq != nullptr)
+                prepareProcessor (*t.eq);
             if (t.kit != nullptr)
                 t.kit->prepare (sampleRate.load());
         };
@@ -1466,6 +1486,18 @@ private:
     void processInserts (Track& t, int numSamples)
     {
         auto& w = t.work;
+        if (t.eq != nullptr)
+        {
+            juce::AudioBuffer<float> view (w.getArrayOfWritePointers(), 2, numSamples);
+            midiScratch.clear();
+            t.eq->processBlock (view, midiScratch);
+            if (! isSane (w, numSamples))
+            {
+                w.clear (0, numSamples);
+                runawayTrack = &t;
+                runawayProcessor = t.eq.get();
+            }
+        }
         for (auto& list : t.inserts)
         {
             for (auto& ins : list)

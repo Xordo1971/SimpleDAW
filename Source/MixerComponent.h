@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "AudioEngine.h"
 #include "Theme.h"
+#include "Effects.h"
 
 // Lo que el mezclador necesita de la ventana principal
 struct MixerHost
@@ -12,6 +13,7 @@ struct MixerHost
     virtual void showInsertOptions (Track&, Section, int slot, juce::Component& target) = 0;
     virtual void openInsertEditor (Track&, Section, int slot) = 0;
     virtual void showInsertPanel (Track&, juce::Component& target) = 0;
+    virtual void openChannelEq (Track&) = 0;   // EQ de canal (lo crea si aún no tiene)
 
     // Regiones, selección e importación (pistas y editor)
     virtual void selectRegion (Track&, juce::int64 regionId) = 0;   // -1: solo la pista
@@ -430,6 +432,47 @@ private:
     int lastActive = -1, lastTotal = -1;
 };
 
+// Botón "EQ" de la cabecera de pista: abre el EQ de canal (encendido si está activo y cambia el sonido)
+class EqChip : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    EqChip (MixerHost& h, Track& t) : host (h), track (t)
+    {
+        setRepaintsOnMouseActivity (true);
+        setTooltip (tr8 ("EQ de canal de la pista"));
+    }
+
+    void refresh()
+    {
+        auto* eq = dynamic_cast<ChannelEqEffect*> (track.eq.get());
+        const bool lit = eq != nullptr && eq->isShaping();
+        if (lit != lastLit) { lastLit = lit; repaint(); }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        auto base = lastLit ? Theme::accent.withMultipliedSaturation (0.7f).withMultipliedBrightness (0.75f) : Theme::panelLight;
+        if (isMouseButtonDown()) base = base.darker (0.2f);
+        else if (isMouseOver())  base = base.brighter (0.1f);
+        Theme::fillRaised (g, r, base, 4.0f);
+        g.setColour (lastLit ? Theme::strongText : Theme::textDim);
+        g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+        g.drawText ("EQ", r, juce::Justification::centred);
+    }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (getLocalBounds().contains (e.getPosition()))
+            host.openChannelEq (track);
+    }
+
+private:
+    MixerHost& host;
+    Track& track;
+    bool lastLit = false;
+};
+
 // Panel desplegable (desde la cabecera de pista) con las ranuras de plugins y efectos
 class InsertPanel : public juce::Component, private juce::Timer
 {
@@ -563,6 +606,7 @@ public:
     ~ChannelStrip() override { setLookAndFeel (nullptr); }
 
     Track& getTrack() { return track; }
+    const Track& getTrack() const { return track; }
 
     // Huecos de plugins/efectos. Todos los canales usan los mismos para que los faders queden alineados
     // (MainComponent pone el máximo que necesite cualquier canal).
@@ -592,9 +636,19 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        if (eqBox.contains (e.getPosition()))
+        {
+            host.openChannelEq (track);
+            return;
+        }
         if (track.isBus && nameArea.contains (e.getPosition()))
         {
             host.showBusMenu (track, *this);   // renombrar o quitar el bus
+            return;
+        }
+        if (! track.isBus && ! track.isMaster && nameArea.contains (e.getPosition()))
+        {
+            host.selectRegion (track, -1);   // clic en el nombre: seleccionar la pista
             return;
         }
         if (peakBox.contains (e.getPosition()))
@@ -603,6 +657,13 @@ public:
             lastPeakText.clear();
             repaint (peakBox);
         }
+    }
+
+    juce::String getTooltip() override
+    {
+        if (eqBox.contains (getMouseXYRelative()))
+            return tr8 ("EQ de canal: clic para abrirlo (curva, 8 bandas)");
+        return juce::SettableTooltipClient::getTooltip();
     }
 
     void refresh()
@@ -635,6 +696,16 @@ public:
         for (auto* s : effectSlots) s->repaint();
 
         if (track.name != lastName) { lastName = track.name; repaint(); }
+
+        // Curva del EQ: se repinta si cambia
+        juce::String key;
+        if (auto* eq = dynamic_cast<ChannelEqEffect*> (track.eq.get()))
+        {
+            key << (int) eq->isEnabled();
+            for (float f : { 30.0f, 80.0f, 200.0f, 500.0f, 1200.0f, 3000.0f, 8000.0f, 16000.0f })
+                key << juce::roundToInt (eq->responseDb (f) * 10.0f) << ",";
+        }
+        if (key != lastEqKey) { lastEqKey = key; repaint (eqBox); }
     }
 
     void paint (juce::Graphics& g) override
@@ -647,6 +718,8 @@ public:
         g.drawVerticalLine (getWidth() - 1, 0.0f, r.getBottom());
         g.setColour (juce::Colours::white.withAlpha (0.07f));
         g.drawVerticalLine (0, 0.0f, r.getBottom());
+
+        drawEqBox (g);
 
         // Títulos de sección
         g.setColour (StripLook::textDim);
@@ -709,6 +782,8 @@ public:
         nameArea = getLocalBounds().removeFromBottom (28);
         r.removeFromBottom (28);
 
+        eqBox = r.removeFromTop (30);
+        r.removeFromTop (4);
         pluginsLabel = r.removeFromTop (14);
         for (auto* s : pluginSlots) { s->setBounds (r.removeFromTop (20)); r.removeFromTop (2); }
         r.removeFromTop (4);
@@ -766,6 +841,45 @@ public:
     }
 
 private:
+    // Recuadro del EQ de canal (como el "Ecualizador" de Logic): la curva si está activo; clic = abrirlo
+    void drawEqBox (juce::Graphics& g)
+    {
+        auto box = eqBox.toFloat();
+        auto* eq = dynamic_cast<ChannelEqEffect*> (track.eq.get());
+        const bool on = eq != nullptr && eq->isEnabled();
+        g.setColour (StripLook::valueBox);
+        g.fillRoundedRectangle (box, 3.0f);
+        g.setColour (StripLook::edge);
+        g.drawRoundedRectangle (box.reduced (0.5f), 3.0f, 1.0f);
+        if (eq == nullptr || ! eq->isShaping())
+        {
+            g.setColour (on ? Theme::accent : StripLook::valueText.withAlpha (0.55f));
+            g.setFont (juce::FontOptions (10.5f));
+            g.drawText (on ? "EQ" : "Ecualizador", box, juce::Justification::centred);
+            if (on)
+            {
+                g.setColour (Theme::accent.withAlpha (0.5f));
+                g.drawHorizontalLine (juce::roundToInt (box.getCentreY()) + 8, box.getX() + 6.0f, box.getRight() - 6.0f);
+            }
+            return;
+        }
+        auto r = box.reduced (4.0f, 3.0f);
+        juce::Path p;
+        const int steps = juce::jmax (8, (int) r.getWidth() / 2);
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float t = (float) i / (float) steps;
+            const float db = juce::jlimit (-18.0f, 18.0f, eq->responseDb (20.0f * std::pow (1000.0f, t)));
+            const float x = r.getX() + t * r.getWidth();
+            const float y = r.getCentreY() - db / 18.0f * r.getHeight() * 0.5f;
+            if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        g.setColour (StripLook::valueText.withAlpha (0.15f));
+        g.drawHorizontalLine (juce::roundToInt (r.getCentreY()), r.getX(), r.getRight());
+        g.setColour (on ? Theme::accent : StripLook::valueText.withAlpha (0.4f));
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+    }
+
     void setupToggle (juce::TextButton& b, juce::Colour onColour, std::function<void (bool)> setter)
     {
         b.setClickingTogglesState (true);
@@ -789,8 +903,8 @@ private:
     juce::StringArray sendNames;
     juce::Array<juce::Colour> sendColours;
     juce::Array<juce::Rectangle<int>> sendNameAreas;
-    juce::Rectangle<int> pluginsLabel, effectsLabel, sendsLabel, scaleArea, nameArea, volumeBox, peakBox;
-    juce::String lastName, lastPeakText, lastVolumeText;
+    juce::Rectangle<int> eqBox, pluginsLabel, effectsLabel, sendsLabel, scaleArea, nameArea, volumeBox, peakBox;
+    juce::String lastName, lastPeakText, lastVolumeText, lastEqKey;
     int sendRows = 0;
 };
 
@@ -811,7 +925,7 @@ public:
     }
 
     // Ancho que ocuparía con todos los canales visibles
-    int getPreferredWidth() const { return juce::jmax (1, strips.size()) * ChannelStrip::stripWidth + addBusWidth; }
+    int getPreferredWidth() const { return juce::jmax (1, strips.size()) * ChannelStrip::stripWidth + (withAddBus ? addBusWidth : 0); }
 
     void refresh()
     {
@@ -842,16 +956,35 @@ public:
         for (auto* s : strips) s->setSendRows (rows);
     }
 
-    void setTracks (const juce::Array<Track*>& tracks, const juce::Array<std::pair<int, Track*>>& buses = {})
+    // tracks: las pistas que se ven; buses: los activos (sus envíos salen en cada pista).
+    // showBuses: también los canales de los buses y la columna "+ Bus". master: canal master al principio.
+    void setTracks (const juce::Array<Track*>& tracks, const juce::Array<std::pair<int, Track*>>& buses = {},
+                    bool showBuses = true, Track* master = nullptr)
     {
         strips.clear();
+        if (master != nullptr)
+            content.addAndMakeVisible (strips.add (new ChannelStrip (host, *master)));
         for (auto* t : tracks)
             content.addAndMakeVisible (strips.add (new ChannelStrip (host, *t, buses)));
-        for (auto& b : buses)   // los buses, a la derecha de las pistas
-            content.addAndMakeVisible (strips.add (new ChannelStrip (host, *b.second)));
-        addBusColumn.setVisible (buses.size() < Track::maxBuses);
+        if (showBuses)
+            for (auto& b : buses)   // los buses, a la derecha de las pistas
+                content.addAndMakeVisible (strips.add (new ChannelStrip (host, *b.second)));
+        withAddBus = showBuses && buses.size() < Track::maxBuses;
+        addBusColumn.setVisible (withAddBus);
         resized();
     }
+
+    // Qué pistas (no master ni buses) enseña ahora
+    juce::Array<Track*> shownTracks() const
+    {
+        juce::Array<Track*> list;
+        for (auto* s : strips)
+            if (! s->getTrack().isMaster && ! s->getTrack().isBus)
+                list.add (&s->getTrack());
+        return list;
+    }
+
+    juce::String emptyText { "Sin pistas" };
 
     bool keyPressed (const juce::KeyPress& key) override { return host.handleKey (key); }
     void mouseDown (const juce::MouseEvent&) override    { grabKeyboardFocus(); }
@@ -863,7 +996,7 @@ public:
         {
             g.setColour (Theme::textDim);
             g.setFont (juce::FontOptions (12.0f));
-            g.drawFittedText ("Sin pistas", getLocalBounds().reduced (8), juce::Justification::centred, 2);
+            g.drawFittedText (emptyText, getLocalBounds().reduced (8), juce::Justification::centred, 3);
         }
     }
 
@@ -872,7 +1005,7 @@ public:
         // Los canales mantienen su ancho: al desplegarse el panel van apareciendo de izquierda a derecha
         viewport.setBounds (getLocalBounds());
         const int h = viewport.getMaximumVisibleHeight();
-        content.setSize (juce::jmax (getWidth(), strips.size() * ChannelStrip::stripWidth + addBusWidth), h);
+        content.setSize (juce::jmax (getWidth(), strips.size() * ChannelStrip::stripWidth + (withAddBus ? addBusWidth : 0)), h);
         for (int i = 0; i < strips.size(); ++i)
             strips[i]->setBounds (i * ChannelStrip::stripWidth, 0, ChannelStrip::stripWidth, h);
         addBusColumn.setBounds (strips.size() * ChannelStrip::stripWidth, 0, addBusWidth, h);
@@ -901,9 +1034,32 @@ private:
     };
 
     static constexpr int addBusWidth = 40;
+    bool withAddBus = true;
     AddBusColumn addBusColumn;
     MixerHost& host;
     juce::Viewport viewport;
     juce::Component content;
     juce::OwnedArray<ChannelStrip> strips;
+};
+
+// Mezclador completo en su propia ventana (se puede mover a otra pantalla): master, todas las pistas y los buses
+class MixerWindow : public juce::DocumentWindow
+{
+public:
+    MixerWindow (MixerHost& host, AudioEngine& engine, std::function<void()> onClose)
+        : juce::DocumentWindow ("Mezclador", Theme::background, juce::DocumentWindow::allButtons), closed (std::move (onClose))
+    {
+        setUsingNativeTitleBar (true);
+        mixer = new MixerComponent (host, engine);
+        setContentOwned (mixer, false);
+        setResizable (true, false);
+        setResizeLimits (ChannelStrip::stripWidth * 2 + 40, 420, 10000, 10000);
+    }
+
+    MixerComponent& getMixer() { return *mixer; }
+    void closeButtonPressed() override { if (closed) closed(); }
+
+private:
+    MixerComponent* mixer = nullptr;   // lo posee la ventana (contenido)
+    std::function<void()> closed;
 };

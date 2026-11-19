@@ -3,6 +3,14 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.3.0
+
+- EQ de canal en cada pista y en el Master (en el Master afecta a toda la mezcla): 8 bandas al estilo Logic (corte de graves, estante de graves, cuatro campanas, estante de agudos y corte de agudos). Se abre con el botón «EQ» de la cabecera de la pista o con el recuadro «Ecualizador» de arriba de cada canal del mezclador, que enseña la curva.
+- En el editor del EQ, cada banda es un punto de color: se arrastra para cambiar la frecuencia y la ganancia, con la rueda se cambia la Q y con doble clic se activa o desactiva la banda. Debajo están los valores, que se cambian arrastrando o escribiéndolos. El EQ se guarda con el proyecto.
+- El mezclador lateral enseña ahora solo el Master y la pista seleccionada, como Logic: al seleccionar otra pista cambia, sin ocupar más sitio.
+- Nuevo «Mezclador completo» en su propia ventana (Ver > Mezclador completo, Mayús+X o Mayús+clic en el botón del mezclador): Master, todas las pistas y los buses. Se puede mover a otra pantalla y cerrar. Clic en el nombre de un canal para seleccionar la pista.
+- Los proyectos nuevos ya no traen los buses de Reverb y Delay: los efectos se ponen pista a pista. Los buses se siguen pudiendo añadir con «+ Bus» en el mezclador completo. Los proyectos antiguos conservan los suyos.
+
 ## 2.2.1
 
 - Ampli: el micro de la pantalla ahora se oye. Antes sus cambios caían en agudos que la pantalla ya había quitado y no se notaban.

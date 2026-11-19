@@ -25,6 +25,13 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   (`recordUndo(nombre, deshacer, rehacer)`; el primer "perform" no hace nada), buses, presets, actualizaciones.
 - `MixerComponent.h`: canales al estilo de Logic (`StripLook`, `StripLookAndFeel`: gris medio, fader metálico,
   envíos en filas, volumen/pico, R/I/M/S; todos reservan las mismas filas de envíos y huecos para alinear faders), `MixerHost`.
+  El panel lateral (`mixer`) enseña solo la pista seleccionada (`panelTrack()`, al lado del master fijo);
+  el mezclador completo (master, pistas y buses, con «+ Bus») va en `MixerWindow` (Ver > Mezclador completo, Mayús+X).
+  Los proyectos nuevos no traen buses (`setupDefaultBuses` solo los quita).
+- EQ de canal: `ChannelEqEffect` (Effects.h, 8 bandas, parámetro `on`) en `Track::eq`, un hueco propio de cada pista,
+  bus y master que el motor procesa antes de las inserciones; se crea al abrirlo (`openChannelEq`) y se guarda como
+  `CHANNEL_EQ` dentro de cada canal. Editor gráfico en `ChannelEqEditor.h`; recuadro con la curva arriba de cada
+  `ChannelStrip` y botón `EqChip` («EQ») en la cabecera de pista.
 - `TrackComponent.h`: cabecera y carril de cada pista (regiones, batería por compases, automatización).
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
 - `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1774x887, diseño propio del autor; no usar

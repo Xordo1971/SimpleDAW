@@ -28,7 +28,8 @@ MainComponent::MainComponent()
 
     setupButton (addTrackButton, [this] { showAddTrackMenu(); },  tr8 ("Añadir una pista de audio o de batería"));
     setupButton (audioButton,    [this] { showAudioSettings(); }, "Dispositivos de entrada y salida");
-    setupButton (mixerButton,    [this] { toggleMixer(); },       "Mostrar u ocultar el mezclador (X)");
+    setupButton (mixerButton,    [this] { if (juce::ModifierKeys::currentModifiers.isShiftDown()) toggleMixerWindow(); else toggleMixer(); },
+                 tr8 ("Mezclador de la pista seleccionada (X). Con mayúsculas: mezclador completo en una ventana (Mayús+X)"));
     setupButton (pluginsButton,  [this] { showPluginManager(); }, "Buscar y gestionar plugins (VST3 / AU)");
     setupButton (importButton,   [this] { chooseFilesToImport(); }, tr8 ("Importar audio (wav, aiff, mp3...) en una pista nueva (Ctrl/Cmd+I). A la pista activa: Pista > Importar a la pista activa. También puedes arrastrar archivos a la ventana"));
     setupButton (editorButton,   [this] { toggleEditor(); },       tr8 ("Mostrar u ocultar el editor de audio (E)"));
@@ -228,6 +229,7 @@ MainComponent::~MainComponent()
     editorWindows.clear();            // primero las ventanas de los plugins
     tunerWindow = nullptr;
     mixerAnimation.stopTimer();
+    mixerWindow = nullptr;
     mixer = nullptr;
     masterStrip = nullptr;
     knownPlugins.removeChangeListener (this);
@@ -569,6 +571,7 @@ bool MainComponent::handleKey (const juce::KeyPress& key)
     }
     if (c == 'e' || c == 'E') { toggleEditor(); return true; }
     if (c == 'r' || c == 'R') { toggleRecord(); return true; }
+    if ((c == 'x' || c == 'X') && mods.isShiftDown()) { toggleMixerWindow(); return true; }
     if (c == 'x' || c == 'X') { toggleMixer(); return true; }
     if (c == 'k' || c == 'K') { toggleMetronome(); return true; }
     if (c == 'c' || c == 'C') { toggleCycle(); return true; }
@@ -635,6 +638,12 @@ void MainComponent::timerCallback()
                     for (auto& ins : list)
                         if (ins->processor.get() == p)
                             fx = juce::String (tr8 ("«")) + p->getName() + tr8 ("»");
+                if (t->eq.get() == p)
+                {
+                    fx = tr8 ("«EQ de canal»");
+                    if (auto* e = dynamic_cast<ChannelEqEffect*> (p))
+                        e->enabledParam().setValueNotifyingHost (0.0f);   // se apaga (el motor no lo salta solo)
+                }
             }
             Dialogs::show (juce::MessageBoxIconType::WarningIcon, tr8 ("Efecto desactivado"),
                 tr8 ("El efecto ") + fx + tr8 (" de ") + where
@@ -946,12 +955,66 @@ void MainComponent::resized()
 
 void MainComponent::updateMixerTracks()
 {
-    juce::Array<Track*> list;
+    updateMixerPanel();
+    if (mixerWindow != nullptr)
+    {
+        juce::Array<Track*> list;
+        for (auto* tc : trackComponents)
+            list.add (&tc->getTrack());
+        mixerWindow->getMixer().setTracks (list, activeBuses(), true, &engine.getMaster());
+    }
+}
+
+// La pista que enseña el panel del mezclador (al estilo Logic): la seleccionada, o la primera
+Track* MainComponent::panelTrack() const
+{
     for (auto* tc : trackComponents)
-        list.add (&tc->getTrack());
+        if (&tc->getTrack() == selectedTrack)
+            return selectedTrack;
+    return trackComponents.isEmpty() ? nullptr : &trackComponents.getFirst()->getTrack();
+}
+
+void MainComponent::updateMixerPanel()
+{
     if (mixer != nullptr)
-        mixer->setTracks (list, activeBuses());
+    {
+        juce::Array<Track*> list;
+        if (auto* t = panelTrack())
+            list.add (t);
+        mixer->emptyText = tr8 ("Sin pistas");
+        mixer->setTracks (list, activeBuses(), false);
+    }
     resized();
+}
+
+void MainComponent::toggleMixerWindow()
+{
+    if (mixerWindow != nullptr)
+    {
+        mixerWindowBounds = mixerWindow->getBounds();
+        mixerWindow = nullptr;
+        menuItemsChanged();
+        return;
+    }
+    juce::Component::SafePointer<MainComponent> self (this);
+    mixerWindow = std::make_unique<MixerWindow> (*this, engine, [self]
+    {
+        // Se cierra de forma asíncrona: estamos dentro de un evento de la propia ventana
+        juce::MessageManager::callAsync ([self] { if (self != nullptr && self->mixerWindow != nullptr) self->toggleMixerWindow(); });
+    });
+    updateMixerTracks();
+    if (mixerWindowBounds.isEmpty())
+    {
+        auto screen = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())->userArea;
+        const int w = juce::jmin (screen.getWidth() - 80, juce::jmax (ChannelStrip::stripWidth * 4, mixerWindow->getMixer().getPreferredWidth()));
+        const int h = juce::jmin (screen.getHeight() - 80, 760);
+        mixerWindow->centreWithSize (w, h);
+    }
+    else
+        mixerWindow->setBounds (mixerWindowBounds);
+    mixerWindow->setVisible (true);
+    mixerWindow->toFront (true);
+    menuItemsChanged();
 }
 
 bool MainComponent::trackExists (const Track* t) const
@@ -1187,6 +1250,32 @@ void MainComponent::openInsertEditor (Track& track, Section section, int slot)
     }
 }
 
+void MainComponent::openChannelEq (Track& track)
+{
+    if (track.eq == nullptr)
+        engine.setEq (track, std::make_unique<ChannelEqEffect>());   // EQ plano: no cambia nada hasta tocarlo
+
+    auto& processor = *track.eq;
+    for (auto* w : editorWindows)
+        if (&w->getProcessor() == &processor)
+        {
+            w->setVisible (true);
+            w->toFront (true);
+            return;
+        }
+
+    juce::Component::SafePointer<MainComponent> self (this);
+    editorWindows.add (new PluginEditorWindow (processor, track.name + tr8 (" · EQ de canal"),
+        [self] (PluginEditorWindow* w)
+        {
+            juce::MessageManager::callAsync ([self, w]
+            {
+                if (self != nullptr)
+                    self->editorWindows.removeObject (w);
+            });
+        }));
+}
+
 int MainComponent::applyAmpPreset (Track& track, juce::AudioProcessor& amp, const juce::XmlElement& preset)
 {
     juce::String beforeName;
@@ -1221,6 +1310,8 @@ void MainComponent::closeEditorFor (juce::AudioProcessor& processor)
 
 void MainComponent::closeEditorsForTrack (Track& track)
 {
+    if (track.eq != nullptr)
+        closeEditorFor (*track.eq);
     for (auto& list : track.inserts)
         for (auto& ins : list)
             closeEditorFor (*ins->processor);
@@ -1284,6 +1375,14 @@ void MainComponent::updateMeters()
         read (*b.second);
 
     // Huecos de plugins/efectos: al llenarse los de un canal se abre uno más en todos (faders alineados)
+    // El panel sigue a la pista seleccionada
+    {
+        auto* want = panelTrack();
+        const auto shown = mixer->shownTracks();
+        if (shown.size() != (want != nullptr ? 1 : 0) || (want != nullptr && shown.getFirst() != want))
+            updateMixerPanel();
+    }
+
     int numPluginSlots = masterStrip->neededSlots (Section::plugins);
     int numEffectSlots = masterStrip->neededSlots (Section::effects);
     mixer->getNeededSlots (numPluginSlots, numEffectSlots);
@@ -1296,6 +1395,17 @@ void MainComponent::updateMeters()
     masterStrip->refresh();
     if (mixerReveal > 0.0f)
         mixer->refresh();
+
+    // Ventana del mezclador completo (sus canales se alinean entre sí)
+    if (mixerWindow != nullptr && mixerWindow->isVisible())
+    {
+        auto& wm = mixerWindow->getMixer();
+        int wp = 0, we = 0;
+        wm.getNeededSlots (wp, we);
+        wm.setSlotCounts (wp, we);
+        wm.setSendRows (wm.getMaxSends());
+        wm.refresh();
+    }
 }
 
 void MainComponent::showInsertPanel (Track& track, juce::Component& target)
@@ -1642,6 +1752,12 @@ void MainComponent::preferStereoLayout (juce::AudioPluginInstance& instance)
 
 void MainComponent::insertsToXml (Track& t, juce::XmlElement& parent)
 {
+    if (t.eq != nullptr)   // EQ de canal
+    {
+        juce::MemoryBlock state;
+        t.eq->getStateInformation (state);
+        parent.createNewChildElement ("CHANNEL_EQ")->setAttribute ("state", state.toBase64Encoding());
+    }
     for (int sec = 0; sec < 2; ++sec)
     {
         for (auto& ins : t.inserts[sec])
@@ -1671,6 +1787,22 @@ void MainComponent::insertsToXml (Track& t, juce::XmlElement& parent)
 
 void MainComponent::insertsFromXml (Track& t, const juce::XmlElement& parent, juce::StringArray& warnings)
 {
+    if (auto* ex = parent.getChildByName ("CHANNEL_EQ"))
+    {
+        auto eq = std::make_unique<ChannelEqEffect>();
+        juce::MemoryBlock state;
+        if (state.fromBase64Encoding (ex->getStringAttribute ("state")))
+            eq->setStateInformation (state.getData(), (int) state.getSize());
+        if (t.eq != nullptr)
+            closeEditorFor (*t.eq);
+        engine.setEq (t, std::move (eq));
+    }
+    else if (t.eq != nullptr)
+    {
+        closeEditorFor (*t.eq);
+        engine.setEq (t, nullptr);
+    }
+
     const double sr = engine.getSampleRate() > 0 ? engine.getSampleRate() : 44100.0;
     const int bs = engine.getBlockSize() > 0 ? engine.getBlockSize() : 512;
 
@@ -1929,11 +2061,18 @@ void MainComponent::clearProject()
 
     if (mixer != nullptr)
         mixer->setTracks ({});       // el mezclador deja de apuntar a las pistas...
+    if (mixerWindow != nullptr)
+        mixerWindow->getMixer().setTracks ({});
     trackComponents.clear();         // ...y la vista de pistas también...
     for (auto* t : tracks)
         engine.removeTrack (t);      // ...antes de destruirlas
 
     auto& master = engine.getMaster();
+    if (master.eq != nullptr)
+    {
+        closeEditorFor (*master.eq);
+        engine.setEq (master, nullptr);
+    }
     for (int sec = 0; sec < 2; ++sec)
         while (! master.inserts[sec].empty())
             engine.removeInsert (master, (Section) sec, (int) master.inserts[sec].size() - 1);
@@ -2396,7 +2535,7 @@ namespace MenuIds
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
         newTrack = 10, importAudio, transpose, speed, newDrumTrack, importToTrack,
-        mixer = 20, editor, plugins, audioSettings, about, lightMode, themeBase = 100,   // themeBase + n = tema n (0 = el de siempre)
+        mixer = 20, editor, plugins, audioSettings, about, lightMode, mixerWindow, themeBase = 100,   // themeBase + n = tema n (0 = el de siempre)
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
 }
@@ -2485,7 +2624,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
     }
     else if (index == 4)
     {
-        add (MenuIds::mixer,  "Mezclador",       juce::KeyPress ('x', 0, 0), mixerOpen);
+        add (MenuIds::mixer,  tr8 ("Mezclador (pista seleccionada)"), juce::KeyPress ('x', 0, 0), mixerOpen);
+        add (MenuIds::mixerWindow, tr8 ("Mezclador completo (ventana)"), juce::KeyPress ('x', juce::ModifierKeys::shiftModifier, 0), mixerWindow != nullptr);
         add (MenuIds::editor, "Editor de audio", juce::KeyPress ('e', 0, 0), editorVisible);
         m.addSeparator();
         {
@@ -2533,6 +2673,7 @@ void MainComponent::menuItemSelected (int itemId, int)
                 transposeRegion (*selectedTrack, selectedRegion);
             break;
         case MenuIds::mixer:         toggleMixer(); break;
+        case MenuIds::mixerWindow:   toggleMixerWindow(); break;
         case MenuIds::editor:        toggleEditor(); break;
         case MenuIds::plugins:       showPluginManager(); break;
         case MenuIds::audioSettings: showAudioSettings(); break;
@@ -2828,10 +2969,9 @@ void MainComponent::jumpToMarker (int direction)
 
 void MainComponent::setupDefaultBuses()
 {
-    // Por defecto: un bus de reverb y otro de delay (se pueden quitar y añadir otros)
+    // Por defecto, sin buses: los efectos se ponen pista a pista. Los buses se añaden con "+ Bus"
+    // (en el mezclador completo)
     removeAllBuses();
-    createBus ("Reverb", "Reverb");
-    createBus ("Delay", "Delay");
 }
 
 juce::Array<std::pair<int, Track*>> MainComponent::activeBuses() const
@@ -3213,6 +3353,7 @@ void MainComponent::showWhatsNewIfUpdated()
 void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
 {
     folder.createDirectory();
+    captureFolder = folder;
     auto save = [this, folder] (const juce::String& name)
     {
         juce::PNGImageFormat png;
@@ -3321,6 +3462,34 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
             {
                 if (self == nullptr) return;
                 save ("7-mezclador.png");
+                // Mezclador completo en su ventana y el EQ de canal (con una curva de ejemplo)
+                self->toggleMixerWindow();
+                if (self->mixerWindow != nullptr)
+                {
+                    self->updateMeters();
+                    auto& wm = *self->mixerWindow->getContentComponent();
+                    juce::PNGImageFormat png;
+                    juce::FileOutputStream out (self->captureFolder.getChildFile ("10-mezclador-ventana.png"));
+                    if (out.openedOk()) { out.setPosition (0); out.truncate(); png.writeImageToStream (wm.createComponentSnapshot (wm.getLocalBounds(), true, 1.0f), out); }
+                    self->toggleMixerWindow();
+                }
+                {
+                    ChannelEqEffect eq;
+                    eq.prepareToPlay (48000.0, 512);
+                    auto set = [&eq] (const juce::String& id, float v)
+                    {
+                        for (auto* p : eq.getParameters())
+                            if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+                                if (r->paramID == id) r->setValueNotifyingHost (r->convertTo0to1 (v));
+                    };
+                    set ("b1on", 1.0f); set ("b1f", 80.0f);
+                    set ("b3g", 3.5f); set ("b5f", 800.0f); set ("b5g", -4.0f); set ("b5q", 1.4f);
+                    set ("b7g", 2.5f);
+                    std::unique_ptr<juce::AudioProcessorEditor> ed (eq.createEditor());
+                    juce::PNGImageFormat png;
+                    juce::FileOutputStream out (self->captureFolder.getChildFile ("11-eq.png"));
+                    if (out.openedOk()) { out.setPosition (0); out.truncate(); png.writeImageToStream (ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f), out); }
+                }
                 if (auto* top = self->getTopLevelComponent())
                     top->setSize (1390, 760);   // ancho mínimo de la ventana
                 juce::Timer::callAfterDelay (500, [self, save]

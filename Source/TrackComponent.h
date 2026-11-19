@@ -12,10 +12,11 @@ class TrackComponent : public juce::Component, public juce::FileDragAndDropTarge
 public:
     TrackComponent (Track& t, AudioEngine& e, Timeline& tl, MixerHost& host, std::function<void (TrackComponent&)> onDeleteRequested)
         : track (t), engine (e), timeline (tl), host (host), onDelete (std::move (onDeleteRequested)),
-          pluginChip (host, t, Section::plugins), effectChip (host, t, Section::effects)
+          pluginChip (host, t, Section::plugins), effectChip (host, t, Section::effects), eqChip (host, t)
     {
         addAndMakeVisible (pluginChip);
         addAndMakeVisible (effectChip);
+        addAndMakeVisible (eqChip);
 
         // Pista de batería: sin entrada ni grabación; botón para abrir el editor de patrones
         editDrumsButton.onClick = [this] { this->host.openDrumEditor (track); };
@@ -318,8 +319,10 @@ public:
         row1.removeFromRight (8);
 
         // Nombre a la izquierda; botones de plugins y efectos entre el nombre y los botones de pista
-        nameLabel.setBounds (row1.removeFromLeft (juce::jmax (60, row1.getWidth() - 112)));
+        nameLabel.setBounds (row1.removeFromLeft (juce::jmax (60, row1.getWidth() - 146)));
         row1.removeFromLeft (4);
+        eqChip.setBounds (row1.removeFromRight (30));
+        row1.removeFromRight (4);
         const int chipW = (row1.getWidth() - 4) / 2;
         pluginChip.setBounds (row1.removeFromLeft (chipW));
         row1.removeFromLeft (4);
@@ -1066,6 +1069,7 @@ private:
 
         pluginChip.refresh();
         effectChip.refresh();
+        eqChip.refresh();
 
         const float p = track.peak.exchange (0.0f);
         level = juce::jmax (p, level * 0.85f);
@@ -1085,6 +1089,7 @@ private:
     std::function<void (TrackComponent&)> onDelete;
 
     InsertChip pluginChip, effectChip;
+    EqChip eqChip;
     juce::Label nameLabel;
     juce::ComboBox inputBox;
     IconButton armButton { "armar", IconButton::Icon::recordSmall, Theme::recordRed };

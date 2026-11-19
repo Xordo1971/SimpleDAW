@@ -1020,6 +1020,173 @@ private:
     int holdLeft = 0;
 };
 
+// ---------------------------------------------------------------- EQ de canal (8 bandas, al estilo Logic)
+// Va en un hueco propio de cada pista y del master (Track::eq), antes de los plugins y efectos.
+// Bandas: 0 corte de graves, 1 estante de graves, 2-5 campanas, 6 estante de agudos, 7 corte de agudos.
+class ChannelEqEffect : public BuiltInEffect
+{
+public:
+    static constexpr int numBands = 8;
+    enum Kind { lowCut, lowShelf, peak, highShelf, highCut };
+
+    static Kind kindOf (int band)
+    {
+        return band == 0 ? lowCut : band == 1 ? lowShelf : band == 6 ? highShelf : band == 7 ? highCut : peak;
+    }
+
+    struct Band { juce::AudioParameterBool* on; juce::AudioParameterFloat* freq; juce::AudioParameterFloat* gain; juce::AudioParameterFloat* q; };
+
+    ChannelEqEffect() : BuiltInEffect ("EQ de canal")
+    {
+        static const float freqs[numBands] = { 20.0f, 75.0f, 100.0f, 250.0f, 1040.0f, 2500.0f, 7500.0f, 20000.0f };
+        static const float qs[numBands]    = { 0.71f, 1.0f, 0.6f, 0.3f, 0.41f, 0.2f, 1.0f, 0.71f };
+        for (int b = 0; b < numBands; ++b)
+        {
+            const auto n = juce::String (b + 1);
+            const auto k = kindOf (b);
+            bands[(size_t) b].on   = toggle ("b" + n + "on", "Banda " + n + " activa", k != lowCut && k != highCut);
+            bands[(size_t) b].freq = param ("b" + n + "f", "Banda " + n + " frecuencia", 20.0f, 20000.0f, freqs[b], "Hz", 1000.0f);
+            bands[(size_t) b].gain = param ("b" + n + "g", "Banda " + n + " ganancia", -24.0f, 24.0f, 0.0f, "dB");
+            bands[(size_t) b].q    = param ("b" + n + "q", "Banda " + n + " Q", 0.1f, 10.0f, qs[b], {}, 1.0f);
+        }
+        output = param ("gain", "Ganancia", -24.0f, 24.0f, 0.0f, "dB");
+        enabled = toggle ("on", "EQ activo", true);
+    }
+
+    bool isEnabled() const { return enabled->get(); }
+    juce::AudioParameterBool& enabledParam() { return *enabled; }
+
+    Band& band (int b) { return bands[(size_t) b]; }
+    juce::AudioParameterFloat& outputGain() { return *output; }
+    double getSampleRateForDisplay() const { return sampleRate > 0 ? sampleRate : 48000.0; }
+
+    // Coeficientes de una banda (también los usa el editor para dibujar la curva)
+    static juce::dsp::IIR::Coefficients<float>::Ptr coefficientsFor (int band, double sr, float f, float g, float q)
+    {
+        using C = juce::dsp::IIR::Coefficients<float>;
+        f = juce::jlimit (10.0f, (float) (sr * 0.49), f);
+        const float gain = juce::Decibels::decibelsToGain (g);
+        switch (kindOf (band))
+        {
+            case lowCut:    return C::makeHighPass (sr, f, q);
+            case lowShelf:  return C::makeLowShelf (sr, f, q, gain);
+            case highShelf: return C::makeHighShelf (sr, f, q, gain);
+            case highCut:   return C::makeLowPass (sr, f, q);
+            case peak:      break;
+        }
+        return C::makePeakFilter (sr, f, q, gain);
+    }
+
+    // Los cortes son de 24 dB/oct: dos filtros iguales seguidos
+    static int stagesFor (int band) { const auto k = kindOf (band); return (k == lowCut || k == highCut) ? 2 : 1; }
+
+    // Respuesta de una banda y la total en dB a una frecuencia (para dibujar la curva)
+    float bandResponseDb (int b, float f)
+    {
+        const double sr = getSampleRateForDisplay();
+        auto& bd = band (b);
+        auto c = coefficientsFor (b, sr, bd.freq->get(), bd.gain->get(), bd.q->get());
+        return (float) (juce::Decibels::gainToDecibels (c->getMagnitudeForFrequency ((double) f, sr), -120.0) * stagesFor (b));
+    }
+    float responseDb (float f)
+    {
+        float db = output->get();
+        for (int b = 0; b < numBands; ++b)
+            if (bands[(size_t) b].on->get())
+                db += bandResponseDb (b, f);
+        return db;
+    }
+    // ¿Cambia algo el sonido? (activo y con alguna banda que no sea neutra)
+    bool isShaping()
+    {
+        if (! isEnabled()) return false;
+        if (std::abs (output->get()) > 0.05f) return true;
+        for (int b = 0; b < numBands; ++b)
+        {
+            auto& bd = bands[(size_t) b];
+            if (! bd.on->get()) continue;
+            const auto k = kindOf (b);
+            if ((k == lowCut && bd.freq->get() > 21.0f) || (k == highCut && bd.freq->get() < 19500.0f)
+                || ((k != lowCut && k != highCut) && std::abs (bd.gain->get()) > 0.05f))
+                return true;
+        }
+        return false;
+    }
+
+private:
+    using Filter = juce::dsp::IIR::Filter<float>;
+
+    void prepare (const juce::dsp::ProcessSpec&) override
+    {
+        for (auto& ch : filters) for (auto& f : ch) f.reset();
+        last.fill (-9999.0f);
+        update();
+    }
+
+    void update()
+    {
+        std::array<float, numBands * 4> v {};
+        for (int b = 0; b < numBands; ++b)
+        {
+            v[(size_t) b * 4]     = bands[(size_t) b].on->get() ? 1.0f : 0.0f;
+            v[(size_t) b * 4 + 1] = bands[(size_t) b].freq->get();
+            v[(size_t) b * 4 + 2] = bands[(size_t) b].gain->get();
+            v[(size_t) b * 4 + 3] = bands[(size_t) b].q->get();
+        }
+        if (v == last) return;
+        for (int b = 0; b < numBands; ++b)
+        {
+            active[(size_t) b] = v[(size_t) b * 4] > 0.5f;
+            bool changed = false;
+            for (int i = 1; i < 4; ++i) changed |= v[(size_t) b * 4 + i] != last[(size_t) b * 4 + i];
+            if (! changed) continue;
+            auto c = coefficientsFor (b, sampleRate > 0 ? sampleRate : 48000.0, v[(size_t) b * 4 + 1], v[(size_t) b * 4 + 2], v[(size_t) b * 4 + 3]);
+            for (auto& ch : filters)
+                for (int st = 0; st < 2; ++st)
+                    *ch[(size_t) (b * 2 + st)].coefficients = *c;
+        }
+        last = v;
+    }
+
+    void process (juce::AudioBuffer<float>& buffer) override
+    {
+        update();
+        if (! enabled->get())
+            return;
+        const float out = juce::Decibels::decibelsToGain (output->get());
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            auto* data = buffer.getWritePointer (ch);
+            auto& fs = filters[(size_t) ch];
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                float x = data[i];
+                for (int b = 0; b < numBands; ++b)
+                    if (active[(size_t) b])
+                    {
+                        x = fs[(size_t) (b * 2)].processSample (x);
+                        if (stagesFor (b) == 2)
+                            x = fs[(size_t) (b * 2 + 1)].processSample (x);
+                    }
+                data[i] = x * out;
+            }
+        }
+    }
+
+public:
+   #if JUCE_MODULE_AVAILABLE_juce_audio_processors
+    juce::AudioProcessorEditor* createEditor() override;   // ChannelEqEditor.h
+   #endif
+
+private:
+    std::array<Band, numBands> bands {};
+    juce::AudioParameterFloat* output = nullptr;
+    juce::AudioParameterBool* enabled = nullptr;
+    std::array<std::array<Filter, numBands * 2>, 2> filters;
+    std::array<bool, numBands> active {};
+    std::array<float, numBands * 4> last {};
+};
+
 // ---------------------------------------------------------------- Catálogo
 namespace BuiltInEffects
 {
@@ -1057,4 +1224,5 @@ namespace BuiltInEffects
 
 #if JUCE_MODULE_AVAILABLE_juce_audio_processors
  #include "AmpEditor.h"   // frontal gráfico del ampli
+ #include "ChannelEqEditor.h"   // editor gráfico del EQ de canal
 #endif
