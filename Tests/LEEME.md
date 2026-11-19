@@ -16,7 +16,7 @@ Compilación (Linux), con `J` = carpeta `modules` de JUCE 8.0.12:
 
 - `test_t1` grabación, latencia, ciclo, pinchado, precuenta, exportar
 - `test_t3` buses y envíos, automatización · `test_t4` deshacer · `test_t5` batería
-- `test_loop` bucle de regiones · `test_eq` EQ de canal · `test_amp` ampli · `test_presets` presets · `test_runaway` protección contra efectos desbocados
+- `test_bridge` entrada en otro aparato (conversión y deriva) · `test_loop` bucle de regiones · `test_eq` EQ de canal · `test_amp` ampli · `test_presets` presets · `test_runaway` protección contra efectos desbocados
 - `test_solo`, `test_live32`, `test_blow` diagnóstico del zumbido del preset «Solo con delay»
 - `test_drumxml`, `test_speed` guardado de batería y cambio de velocidad
 

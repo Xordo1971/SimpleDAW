@@ -3,6 +3,17 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.5.0
+
+- Nuevo «Archivo > Preferencias…» (Cmd+,), con pestañas como los Ajustes de Logic:
+  - General: al arrancar, proyecto vacío o el último proyecto; copia de seguridad automática (desactivada o cada 1, 2, 5 o 10 minutos); buscar actualizaciones al arrancar.
+  - Audio: dispositivo de salida y sus canales, dispositivo de entrada, frecuencia de muestreo, tamaño del búfer, latencia resultante, prueba de sonido y retardo de grabación (a mano o midiéndolo con un cable).
+  - Grabación: profundidad de 16, 24 o 32 bits (coma flotante), precuenta y volumen del metrónomo.
+  - Visualización: tema y nombres debajo de los botones.
+- Entrada y salida en aparatos distintos, aunque vayan a frecuencias diferentes: por ejemplo, grabar con el micro de los AirPods y escuchar por los altavoces del Mac o por unos altavoces externos. La entrada se convierte sola a la frecuencia de la salida y se corrige la diferencia entre los relojes de los dos aparatos; Preferencias dice cuánta latencia añade, y al grabar se compensa sola.
+- Si la frecuencia elegida no la admite la salida, se usa la suya en lugar de dar error.
+- El botón Audio y «Ver > Ajustes de audio» abren ahora la pestaña Audio de Preferencias.
+
 ## 2.4.0
 
 - Bucle de regiones, como en Logic: tirando del borde derecho de una región se alarga repitiendo su audio tantas veces como quieras. Al soltar cerca de una vuelta entera encaja en ella (x2, x3, x4...); con Mayús se puede dejar a mitad de vuelta.

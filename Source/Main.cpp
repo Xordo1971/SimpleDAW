@@ -59,8 +59,10 @@ public:
                                             return;
                                         }
                                         content->checkForRecovery();
+                                        content->openLastProjectIfWanted();
                                         content->showWhatsNewIfUpdated();
-                                        content->checkForUpdates (false);
+                                        if (content->wantsUpdateCheck())
+                                            content->checkForUpdates (false);
                                     }
                             });
         });

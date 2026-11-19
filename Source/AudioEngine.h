@@ -503,8 +503,11 @@ public:
     // ---------- Compensación de latencia ----------
     // Retardo total (ida y vuelta) que se resta a lo grabado = latencia del driver + ajuste manual
     std::atomic<int> manualLatencySamples { 0 };
-    int getReportedLatency() const { return reportedLatency.load(); }
-    int getTotalLatency() const    { return juce::jmax (0, reportedLatency.load() + manualLatencySamples.load()); }
+    // Latencia extra de una entrada de otro dispositivo (AudioRouting.h: su driver + el colchón del conversor)
+    std::atomic<int> extraInputLatency { 0 };
+    std::atomic<int> recordBits { 24 };   // profundidad de las tomas: 16, 24 o 32 (coma flotante)
+    int getReportedLatency() const { return reportedLatency.load() + extraInputLatency.load(); }
+    int getTotalLatency() const    { return juce::jmax (0, getReportedLatency() + manualLatencySamples.load()); }
 
     // Medición por bucle (cable de una salida a una entrada): emite un clic y mide cuándo vuelve
     void startLatencyMeasurement (int inputChannel)
@@ -654,7 +657,10 @@ public:
         std::vector<Pending> pending;
         juce::WavAudioFormat wav;
         const auto stamp = juce::Time::getCurrentTime().formatted ("%Y%m%d-%H%M%S");
-        const auto options = juce::AudioFormatWriterOptions().withSampleRate (sr).withNumChannels (1).withBitsPerSample (24);
+        const int bits = recordBits.load() == 16 ? 16 : recordBits.load() == 32 ? 32 : 24;
+        auto options = juce::AudioFormatWriterOptions().withSampleRate (sr).withNumChannels (1).withBitsPerSample (bits);
+        if (bits == 32)
+            options = options.withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint);
 
         for (auto* t : tracks)
         {

@@ -70,6 +70,7 @@ MainComponent::MainComponent()
     {
         showButtonLabels = ! showButtonLabels;
         labelsToggle.expanded = showButtonLabels;
+        prefs.buttonLabels = showButtonLabels;
         saveAppSettings();
         resized();
     };
@@ -188,8 +189,15 @@ MainComponent::MainComponent()
     }
     loadAppSettings();   // después de abrir el dispositivo: la latencia manual depende de la frecuencia
     setupDefaultBuses();
-    deviceManager.addAudioCallback (&engine);
+    if (splitInputName.isNotEmpty())   // entrada en otro aparato (Preferencias > Audio)
+    {
+        const auto err = openSplitInput (deviceManager.getCurrentAudioDeviceType(), splitInputName);
+        if (err.isNotEmpty() && error.isEmpty())
+            error = err;
+    }
+    deviceManager.addAudioCallback (&router);
     deviceManager.addChangeListener (this);
+    inputDeviceManager.addChangeListener (this);
 
     refreshDeviceInfo();
     if (error.isNotEmpty())
@@ -215,7 +223,7 @@ MainComponent::MainComponent()
     markSaved();
     syncChangeWatcher();
     startTimerHz (30);
-    autosaveTimer.startTimer (120 * 1000);   // autoguardado cada 2 minutos
+    applyAutosaveInterval();   // autoguardado (Preferencias > General)
 }
 
 MainComponent::~MainComponent()
@@ -235,7 +243,9 @@ MainComponent::~MainComponent()
     knownPlugins.removeChangeListener (this);
     hScroll.removeListener (this);
     deviceManager.removeChangeListener (this);
-    deviceManager.removeAudioCallback (&engine);
+    inputDeviceManager.removeChangeListener (this);
+    closeSplitInput();
+    deviceManager.removeAudioCallback (&router);
     deviceManager.closeAudioDevice();
     engine.stop();
     trackComponents.clear();
@@ -257,7 +267,9 @@ void MainComponent::saveAudioSettings()
 juce::StringArray MainComponent::getActiveInputNames() const
 {
     juce::StringArray result;
-    if (auto* dev = deviceManager.getCurrentAudioDevice())
+    auto* inputDevice = router.isUsingBridge() ? const_cast<juce::AudioDeviceManager&> (inputDeviceManager).getCurrentAudioDevice()
+                                               : deviceManager.getCurrentAudioDevice();
+    if (auto* dev = inputDevice)
     {
         auto names  = dev->getInputChannelNames();
         auto active = dev->getActiveInputChannels();
@@ -695,21 +707,185 @@ void MainComponent::timerCallback()
 
 void MainComponent::showAudioSettings()
 {
+    showPreferences (PreferencesComponent::audio);
+}
+
+void MainComponent::showPreferences (int page)
+{
+    audioFallback = false;   // a partir de aquí, lo que elija el usuario se guarda
+    if (preferencesWindow != nullptr)
+    {
+        preferencesWindow->showPage (page);
+        preferencesWindow->setVisible (true);
+        preferencesWindow->toFront (true);
+        return;
+    }
+    juce::Component::SafePointer<MainComponent> self (this);
+    preferencesWindow = std::make_unique<PreferencesWindow> (*this, page, [self]
+    {
+        juce::MessageManager::callAsync ([self] { if (self != nullptr) self->preferencesWindow = nullptr; });
+    });
+}
+
+juce::String MainComponent::getInputDeviceName()
+{
+    if (splitInputName.isNotEmpty())
+        return splitInputName;
+    const auto setup = deviceManager.getAudioDeviceSetup();
+    return setup.inputDeviceName;
+}
+
+// Aplica lo elegido en Preferencias > Audio. Si la entrada es otro aparato, se abre aparte y su frecuencia
+// se convierte sola (AudioRouting.h); si la frecuencia pedida no la admite la salida, se usa la suya.
+juce::String MainComponent::applyAudioSetup (const juce::String& type, const juce::String& output, const juce::String& input,
+                                             double rate, int bufferSize, int outputPair)
+{
     if (engine.getState() != AudioEngine::stopped)
         stopTransport();
-    audioFallback = false;   // a partir de aquí, lo que elija el usuario se guarda
+    audioFallback = false;
 
-    auto* panel = new AudioSettingsPanel (deviceManager, engine, [this] { return getActiveInputNames(); },
-                                          [this] { saveAppSettings(); });
+    if (deviceManager.getCurrentAudioDeviceType() != type)
+        deviceManager.setCurrentAudioDeviceType (type, true);
 
-    juce::DialogWindow::LaunchOptions o;
-    o.content.setOwned (panel);
-    o.dialogTitle = tr8 ("Configuración de audio");
-    o.dialogBackgroundColour = Theme::panel;
-    o.escapeKeyTriggersCloseButton = true;
-    o.useNativeTitleBar = true;
-    o.resizable = false;
-    o.launchAsync();
+    const bool split = input.isNotEmpty() && input != output;
+    closeSplitInput();
+
+    auto setup = deviceManager.getAudioDeviceSetup();
+    setup.outputDeviceName = output;
+    setup.inputDeviceName = split ? juce::String() : input;
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    if (! split && input.isNotEmpty())
+        setup.inputChannels.setRange (0, 16, true);
+    setup.useDefaultOutputChannels = false;
+    setup.outputChannels.clear();
+    setup.outputChannels.setRange (outputPair * 2, 2, true);
+    if (rate > 0) setup.sampleRate = rate;
+    if (bufferSize > 0) setup.bufferSize = bufferSize;
+
+    auto error = deviceManager.setAudioDeviceSetup (setup, true);
+    if (error.isNotEmpty() && deviceManager.getCurrentAudioDevice() == nullptr)
+    {
+        setup.sampleRate = 0;   // frecuencia por defecto del aparato
+        setup.bufferSize = 0;
+        if (deviceManager.setAudioDeviceSetup (setup, true).isEmpty())
+            error = {};
+    }
+
+    splitInputName = split ? input : juce::String();
+    if (split)
+    {
+        const auto e2 = openSplitInput (type, input);
+        if (e2.isNotEmpty())
+            error << (error.isNotEmpty() ? "\n" : "") << e2;
+    }
+    router.setUseBridge (split && inputBridge.running.load());
+
+    saveAudioSettings();
+    saveAppSettings();
+    changeListenerCallback (&deviceManager);   // entradas de las pistas, afinador, barra de estado
+    return error;
+}
+
+juce::String MainComponent::openSplitInput (const juce::String& type, const juce::String& name)
+{
+    closeSplitInput();
+    juce::AudioDeviceManager::AudioDeviceSetup s;
+    s.inputDeviceName = name;
+    s.outputDeviceName = {};
+    s.useDefaultInputChannels = false;
+    s.inputChannels.setRange (0, InputBridge::maxChannels, true);
+    s.useDefaultOutputChannels = false;
+
+    // Si la entrada admite la frecuencia de la salida, se usa (así no hay conversión)
+    const double outRate = engine.getSampleRate();
+    for (auto* t : deviceManager.getAvailableDeviceTypes())
+        if (t->getTypeName() == type)
+        {
+            t->scanForDevices();
+            if (std::unique_ptr<juce::AudioIODevice> d { t->createDevice ({}, name) })
+                if (d->getAvailableSampleRates().contains (outRate))
+                    s.sampleRate = outRate;
+        }
+
+    juce::String error;
+    if (! inputManagerReady)
+    {
+        inputDeviceManager.setCurrentAudioDeviceType (type, false);
+        error = inputDeviceManager.initialise (InputBridge::maxChannels, 0, nullptr, false, {}, &s);
+        inputManagerReady = true;
+    }
+    else
+    {
+        if (inputDeviceManager.getCurrentAudioDeviceType() != type)
+            inputDeviceManager.setCurrentAudioDeviceType (type, false);
+        error = inputDeviceManager.setAudioDeviceSetup (s, true);
+    }
+    if (inputDeviceManager.getCurrentAudioDevice() == nullptr)
+    {
+        router.setUseBridge (false);
+        return tr8 ("No se pudo abrir la entrada «") + name + "»" + (error.isNotEmpty() ? ": " + error : juce::String());
+    }
+    inputDeviceManager.addAudioCallback (&inputBridge);
+    router.setUseBridge (true);
+    return {};
+}
+
+void MainComponent::closeSplitInput()
+{
+    router.setUseBridge (false);
+    if (inputManagerReady)
+    {
+        inputDeviceManager.removeAudioCallback (&inputBridge);
+        inputDeviceManager.closeAudioDevice();
+    }
+    inputBridge.running = false;
+    engine.extraInputLatency = 0;
+}
+
+void MainComponent::setPrefs (const AppPrefs& p)
+{
+    const bool labelsChanged = p.buttonLabels != showButtonLabels;
+    const bool autosaveChanged = p.autosaveMinutes != prefs.autosaveMinutes;
+    prefs = p;
+    engine.recordBits = prefs.recordBits;
+    if (labelsChanged)
+    {
+        showButtonLabels = prefs.buttonLabels;
+        labelsToggle.expanded = showButtonLabels;
+        resized();
+        repaint();
+    }
+    if (autosaveChanged)
+        applyAutosaveInterval();
+    saveAppSettings();
+}
+
+void MainComponent::applyAutosaveInterval()
+{
+    if (prefs.autosaveMinutes > 0)
+        autosaveTimer.startTimer (prefs.autosaveMinutes * 60 * 1000);
+    else
+        autosaveTimer.stopTimer();
+}
+
+int MainComponent::getAppearance()
+{
+    return Theme::themeId > 0 ? Theme::themeId + 1 : (Theme::light ? 1 : 0);
+}
+
+void MainComponent::setAppearance (int a)
+{
+    if (a <= 1)
+        setLightMode (a == 1);
+    else
+        setThemeId (a - 1);
+}
+
+void MainComponent::openLastProjectIfWanted()
+{
+    if (prefs.startupAction == 1 && lastProject.exists() && ! AppPaths::recoveryFile().existsAsFile())
+        loadProject (lastProject, false);
 }
 
 void MainComponent::changeListenerCallback (juce::ChangeBroadcaster* source)
@@ -1988,6 +2164,8 @@ bool MainComponent::writeProject (const juce::File& file)
     }
 
     projectFile = file;
+    lastProject = file;
+    saveAppSettings();
     markSaved();
     updateWindowTitle();
     clearRecovery();
@@ -2224,6 +2402,11 @@ void MainComponent::loadProject (const juce::File& file, bool isRecovery)
     juce::MouseCursor::hideWaitCursor();
 
     projectFile = file;
+    if (! isRecovery)
+    {
+        lastProject = file;
+        saveAppSettings();
+    }
     updateMixerTracks();
     regionsChanged();
     resized();
@@ -2500,7 +2683,7 @@ void MainComponent::startExport (const juce::File& target, ExportSettings settin
         return;
 
     // Mientras se exporta, el motor no atiende a la tarjeta de sonido
-    deviceManager.removeAudioCallback (&engine);
+    deviceManager.removeAudioCallback (&router);
 
     juce::Component::SafePointer<MainComponent> self (this);
     const bool stems = settings.stems;
@@ -2509,7 +2692,7 @@ void MainComponent::startExport (const juce::File& target, ExportSettings settin
         {
             if (self == nullptr)
                 return;
-            self->deviceManager.addAudioCallback (&self->engine);
+            self->deviceManager.addAudioCallback (&self->router);
             if (cancelled)
                 return;
 
@@ -2541,7 +2724,7 @@ namespace MenuIds
         newProject = 1, open, save, saveAs, exportMix, quit, checkUpdates,
         undo = 60, redo, split, duplicate,
         newTrack = 10, importAudio, transpose, speed, newDrumTrack, importToTrack,
-        mixer = 20, editor, plugins, audioSettings, about, lightMode, mixerWindow, themeBase = 100,   // themeBase + n = tema n (0 = el de siempre)
+        mixer = 20, editor, plugins, audioSettings, about, lightMode, mixerWindow, preferences, themeBase = 100,   // themeBase + n = tema n (0 = el de siempre)
         play = 30, record, toStart, metronome, countIn, tuner, cycle, punch, addMarker, prevMarker, nextMarker
     };
 }
@@ -2578,6 +2761,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int index, const juce::String&)
         add (MenuIds::exportMix,  "Exportar mezcla...",   juce::KeyPress ('e', cmd | shift, 0));
         m.addSeparator();
         add (MenuIds::checkUpdates, "Buscar actualizaciones...");
+        m.addSeparator();
+        add (MenuIds::preferences, "Preferencias...",      juce::KeyPress (',', cmd, 0));
        #if ! JUCE_MAC
         m.addSeparator();
         add (MenuIds::quit,       "Salir");
@@ -2683,6 +2868,7 @@ void MainComponent::menuItemSelected (int itemId, int)
         case MenuIds::editor:        toggleEditor(); break;
         case MenuIds::plugins:       showPluginManager(); break;
         case MenuIds::audioSettings: showAudioSettings(); break;
+        case MenuIds::preferences:   showPreferences (PreferencesComponent::general); break;
         case MenuIds::about:         showAbout(); break;
         case MenuIds::lightMode:     setLightMode (! Theme::light); break;
         case MenuIds::themeBase + 0: case MenuIds::themeBase + 1: case MenuIds::themeBase + 2:
@@ -2884,6 +3070,13 @@ void MainComponent::loadAppSettings()
         lightModeSaved = xml->getBoolAttribute ("lightMode", false);   // ya aplicado al arrancar (Main.cpp)
         themeIdSaved = xml->getIntAttribute ("themeId", 0);
         labelsToggle.expanded = showButtonLabels;
+        splitInputName = xml->getStringAttribute ("inputDevice");
+        prefs.startupAction = xml->getIntAttribute ("startupAction", 0);
+        prefs.autosaveMinutes = xml->getIntAttribute ("autosaveMinutes", 2);
+        prefs.checkUpdates = xml->getBoolAttribute ("checkUpdates", true);
+        prefs.recordBits = xml->getIntAttribute ("recordBits", 24);
+        engine.recordBits = prefs.recordBits;
+        lastProject = juce::File (xml->getStringAttribute ("lastProject"));
     }
 }
 
@@ -2897,6 +3090,13 @@ void MainComponent::saveAppSettings()
     xml.setAttribute ("buttonLabels", showButtonLabels);
     xml.setAttribute ("lightMode", lightModeSaved);
     xml.setAttribute ("themeId", themeIdSaved);
+    xml.setAttribute ("inputDevice", splitInputName);
+    xml.setAttribute ("startupAction", prefs.startupAction);
+    xml.setAttribute ("autosaveMinutes", prefs.autosaveMinutes);
+    xml.setAttribute ("checkUpdates", prefs.checkUpdates);
+    xml.setAttribute ("recordBits", prefs.recordBits);
+    if (lastProject != juce::File())
+        xml.setAttribute ("lastProject", lastProject.getFullPathName());
     xml.setAttribute ("lastVersion", lastRunVersion.isNotEmpty() ? lastRunVersion : Updater::currentVersion());
     xml.writeTo (AppPaths::appSettings());
 }
@@ -3394,6 +3594,20 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         ask.addButton ("No guardar", 2);
         ask.addButton ("Cancelar", 0);
         saveDialog (ask, "6-aviso.png");
+    }
+
+    // Preferencias: cada pestaña (13-preferencias-N.png)
+    for (int page = 0; page < PreferencesComponent::numPages; ++page)
+    {
+        PreferencesComponent prefsView (*this, page);
+        juce::PNGImageFormat png;
+        juce::FileOutputStream out (folder.getChildFile ("13-preferencias-" + juce::String (page + 1) + ".png"));
+        if (out.openedOk())
+        {
+            out.setPosition (0);
+            out.truncate();
+            png.writeImageToStream (prefsView.createComponentSnapshot (prefsView.getLocalBounds(), true, 1.0f), out);
+        }
     }
 
     // Pantalla de arranque / Acerca de (9-arranque.png), ya con la animación terminada

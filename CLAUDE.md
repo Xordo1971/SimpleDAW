@@ -46,6 +46,11 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   píxeles de la imagen a 900 de ancho. El sonido del micro (modelo, `micPos`, `micDist`) está en `AmpEffect`
   (Effects.h); solo suena con las pantallas 1x12, 2x12 y 4x12 (no con «Sin pantalla» ni con IR). Las curvas
   de los micros son aproximaciones con filtros, no medidas.
+- `Preferences.h`: Archivo > Preferencias (General, Audio, Grabación, Visualización); `PreferencesHost` lo implementa
+  MainComponent (`applyAudioSetup`, `AppPrefs` guardado en los ajustes). Sustituye a la antigua ventana de audio.
+- `AudioRouting.h`: entrada en otro aparato (`splitInputName`): `inputDeviceManager` + `InputBridge` (cola) y
+  `DeviceRouter` (el callback del dispositivo de salida; convierte la frecuencia con sinc y corrige la deriva de
+  relojes con el llenado medio de la cola, ~3 s). La latencia añadida va en `engine.extraInputLatency`.
 - `Dialogs.h`: ventanas emergentes propias (sustituyen a `juce::AlertWindow`, misma forma de uso): marco gris, icono
   amarillo, título grande y el texto en una caja clara desplazable; `Dialogs::show`, `Dialogs::okCancel`, `Dialogs::Window`.
 - `Presets.h` (formato .sdpreset, XML legible, valores en unidades reales) y `PresetChain.h` (aplicar a la pista).

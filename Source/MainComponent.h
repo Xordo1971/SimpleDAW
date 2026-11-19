@@ -12,7 +12,8 @@
 #include "AudioEditor.h"
 #include "ExportDialog.h"
 #include "Tuner.h"
-#include "AudioSettingsPanel.h"
+#include "AudioRouting.h"
+#include "Preferences.h"
 #include "Undo.h"
 #include "PresetChain.h"
 #include "ResourceMeter.h"
@@ -40,6 +41,7 @@ public:
 
 class MainComponent : public juce::Component,
                       public MixerHost,
+                      public PreferencesHost,
                       public juce::FileDragAndDropTarget,
                       public juce::MenuBarModel,
                       private juce::ChangeListener,
@@ -244,6 +246,34 @@ private:
 
     // Audio
     void showAudioSettings();
+    void showPreferences (int page);
+
+    // PreferencesHost
+    juce::AudioDeviceManager& getOutputDeviceManager() override { return deviceManager; }
+    AudioEngine& getEngine() override                           { return engine; }
+    DeviceRouter& getRouter() override                          { return router; }
+    juce::String getInputDeviceName() override;
+    juce::String applyAudioSetup (const juce::String& type, const juce::String& output, const juce::String& input,
+                                  double rate, int bufferSize, int outputPair) override;
+    juce::StringArray getInputNames() override                  { return getActiveInputNames(); }
+    void latencyChanged() override                              { saveAppSettings(); }
+    AppPrefs getPrefs() override                                { return prefs; }
+    void setPrefs (const AppPrefs&) override;
+    int getAppearance() override;
+    void setAppearance (int) override;
+
+    // Entrada en otro aparato (AudioRouting.h)
+    juce::String openSplitInput (const juce::String& type, const juce::String& name);
+    void closeSplitInput();
+    juce::String splitInputName;          // "" = la entrada es la del dispositivo de salida
+    AppPrefs prefs;
+    juce::File lastProject;               // para "Abrir el último proyecto" al arrancar
+    std::unique_ptr<PreferencesWindow> preferencesWindow;
+    void applyAutosaveInterval();
+public:
+    void openLastProjectIfWanted();       // Main.cpp, al arrancar
+    bool wantsUpdateCheck() const { return prefs.checkUpdates; }
+private:
     void refreshDeviceInfo();
     void saveAudioSettings();
     bool audioFallback = false;   // no se pudo abrir el dispositivo guardado
@@ -255,7 +285,11 @@ private:
     // El orden importa: se destruyen en orden inverso
     SimpleDAWLookAndFeel lookAndFeel;
     AudioEngine engine;
+    InputBridge inputBridge;
+    DeviceRouter router { engine, inputBridge };   // el motor recibe el audio a través de él
     juce::AudioDeviceManager deviceManager;
+    juce::AudioDeviceManager inputDeviceManager;   // entrada de otro aparato
+    bool inputManagerReady = false;
     ResourceMeter resourceMeter { deviceManager };   // CPU y RAM, arriba a la derecha
     juce::AudioPluginFormatManager pluginFormats;
     juce::KnownPluginList knownPlugins;
