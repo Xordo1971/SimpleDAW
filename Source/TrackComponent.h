@@ -7,7 +7,7 @@
 #include "DrumEditor.h"
 
 // Una fila: cabecera con controles a la izquierda y carril con las regiones a la derecha
-class TrackComponent : public juce::Component, public juce::FileDragAndDropTarget, private juce::Timer
+class TrackComponent : public juce::Component, public juce::FileDragAndDropTarget, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
     TrackComponent (Track& t, AudioEngine& e, Timeline& tl, MixerHost& host, std::function<void (TrackComponent&)> onDeleteRequested)
@@ -386,6 +386,17 @@ public:
             return;
         }
 
+        if (index >= 0 && ! e.mods.isAltDown() && ! engine.isRecording() && isLoopZone (index, e.x, lane, sr))
+        {
+            // Tirar del borde derecho: bucle (el audio se repite tantas veces como se alargue)
+            const auto& r = track.regions[(size_t) index];
+            host.selectRegion (track, r.id);
+            loopingRegion = r.id;
+            loopBefore = r.loopLength;
+            repaintLane();
+            return;
+        }
+
         if (index >= 0)
         {
             auto id = track.regions[(size_t) index].id;
@@ -424,6 +435,11 @@ public:
             paintDrumBar (barAt (e.x));
             return;
         }
+        if (loopingRegion >= 0)
+        {
+            loopDrag (e);
+            return;
+        }
         if (! draggingRegion || engine.isRecording() || e.getDistanceFromDragStartX() == 0)
             return;
         const double sr = engine.getSampleRate();
@@ -450,6 +466,26 @@ public:
             paintingDrums = false;
             DrumGrid::commitUndo (track, engine, host, drumBefore, tr8 ("Colocar patrones de batería"));
             if (onDrumsChanged) onDrumsChanged();
+        }
+
+        if (loopingRegion >= 0)
+        {
+            const int index = regionIndexById (loopingRegion);
+            if (index >= 0)
+            {
+                const auto id = loopingRegion, from = loopBefore, to = track.regions[(size_t) index].loopLength;
+                if (from != to)
+                {
+                    Track* t = &track;
+                    auto& eng = engine;
+                    host.recordUndo (tr8 ("Bucle de región"),
+                                     [&eng, t, id, from] { eng.setRegionLoop (*t, id, from); },
+                                     [&eng, t, id, to]   { eng.setRegionLoop (*t, id, to); });
+                    host.regionsChanged();
+                }
+            }
+            loopingRegion = -1;
+            return;
         }
 
         if (draggingRegion)
@@ -968,6 +1004,56 @@ private:
         });
     }
 
+    // Zona del borde derecho de una región que la alarga en bucle (como la esquina de Logic)
+    bool isLoopZone (int index, int x, juce::Rectangle<int> lane, double sr) const
+    {
+        if (track.isDrum() || autoView >= 0 || index < 0 || sr <= 0)
+            return false;
+        const auto& r = track.regions[(size_t) index];
+        const float x0 = timeline.secondsToX ((double) r.start / sr, lane.getX());
+        const float x1 = timeline.secondsToX ((double) r.getEnd() / sr, lane.getX());
+        const float zone = juce::jmin (10.0f, (x1 - x0) / 3.0f);
+        return (float) x >= x1 - zone && (float) x <= x1 + 1.0f;
+    }
+
+    void loopDrag (const juce::MouseEvent& e)
+    {
+        const double sr = engine.getSampleRate();
+        const int index = regionIndexById (loopingRegion);
+        if (sr <= 0 || index < 0)
+            return;
+        const auto lane = getLaneBounds();
+        const auto& r = track.regions[(size_t) index];
+        const auto src = r.sourceLength();
+        if (src <= 0)
+            return;
+        auto len = (juce::int64) (timeline.xToSeconds ((float) e.x, lane.getX()) * sr) - r.start;
+        // Encaja en repeticiones enteras si se suelta cerca (a menos de 10 píxeles); Mayús: sin encajar
+        const auto whole = juce::jmax ((juce::int64) 1, (len + src / 2) / src) * src;
+        const double pixels = std::abs ((double) (whole - len)) / sr * timeline.pixelsPerSecond;
+        if (! e.mods.isShiftDown() && pixels < 10.0)
+            len = whole;
+        engine.setRegionLoop (track, loopingRegion, juce::jmax (src, len));
+        repaintLane();
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const auto lane = getLaneBounds();
+        const double sr = engine.getSampleRate();
+        bool loopCursor = false;
+        if (lane.contains (e.getPosition()) && sr > 0 && ! track.isDrum() && autoView < 0)
+        {
+            const auto sample = (juce::int64) (timeline.xToSeconds ((float) e.x, lane.getX()) * sr);
+            int index = regionIndexAt (sample);
+            if (index < 0)   // justo pasado el final de una región
+                index = regionIndexAt (sample - (juce::int64) (sr / timeline.pixelsPerSecond));
+            loopCursor = isLoopZone (index, e.x, lane, sr);
+        }
+        setMouseCursor (loopCursor ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+        setTooltip (loopCursor ? tr8 ("Arrastra para repetir la región en bucle (Mayús: sin encajar en repeticiones enteras)") : juce::String());
+    }
+
     int regionIndexAt (juce::int64 sample) const
     {
         for (int i = (int) track.regions.size() - 1; i >= 0; --i)
@@ -1016,10 +1102,38 @@ private:
         const int px0 = juce::jmax ((int) x0, lane.getX());
         const int px1 = juce::jmin ((int) x1, lane.getRight());
 
+        // Repeticiones del bucle: más claras, con una muesca en cada vuelta
+        const double src = (double) juce::jmax ((juce::int64) 1, r.sourceLength());
+        if (r.isLooped())
+        {
+            const float xs = timeline.secondsToX ((double) (r.start + r.sourceLength()) / sr, lane.getX());
+            g.setColour (Theme::background.withAlpha (0.35f));
+            g.fillRect (body.withLeft (juce::jmax (body.getX(), xs)));
+            for (double k = src; k < (double) r.getLength(); k += src)
+            {
+                const float xk = timeline.secondsToX (((double) r.start + k) / sr, lane.getX());
+                if (xk < (float) lane.getX() || xk > (float) lane.getRight()) continue;
+                g.setColour (track.colour.darker (0.8f));
+                g.drawVerticalLine (juce::roundToInt (xk), rect.getY(), rect.getBottom());
+                juce::Path notch;
+                notch.addTriangle (xk - 4.0f, rect.getY(), xk + 4.0f, rect.getY(), xk, rect.getY() + 5.0f);
+                g.fillPath (notch);
+            }
+        }
+
         g.setColour (track.colour.brighter (0.6f).withAlpha (0.9f));
+        const float loopX = r.isLooped() ? timeline.secondsToX ((double) (r.start + r.sourceLength()) / sr, lane.getX()) : 1.0e9f;
+        bool dimmed = false;
         for (int px = px0; px < px1; ++px)
         {
-            const double s0 = timeline.xToSeconds ((float) px, lane.getX()) * sr - (double) r.start;
+            if (! dimmed && (float) px >= loopX)
+            {
+                dimmed = true;
+                g.setColour (track.colour.brighter (0.6f).withAlpha (0.55f));
+            }
+            double s0 = timeline.xToSeconds ((float) px, lane.getX()) * sr - (double) r.start;
+            if (r.isLooped() && s0 >= 0.0)
+                s0 = std::fmod (s0, src);
             int i0 = (int) (s0 / Clip::samplesPerPeak);
             int i1 = juce::jmax (i0 + 1, (int) ((s0 + samplesPerPixel) / Clip::samplesPerPeak));
             i0 = juce::jlimit (0, numPeaks, i0);
@@ -1036,7 +1150,9 @@ private:
         g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
         const juce::String takeInfo = r.takes.size() > 1 ? tr8 ("  ·  toma ") + juce::String (r.activeTake + 1) + "/" + juce::String ((int) r.takes.size())
                                                          : juce::String();
-        g.drawText (r.clip->name + (r.clip->getNumChannels() > 1 ? tr8 (" · estéreo") : juce::String()) + takeInfo, rect.withHeight (headerH).reduced (5.0f, 0.0f).toNearestInt(),
+        const auto loops = r.isLooped() ? tr8 ("  ·  bucle x") + juce::String ((double) r.getLength() / src, std::abs ((double) r.getLength() / src - std::round ((double) r.getLength() / src)) < 0.01 ? 0 : 1)
+                                        : juce::String();
+        g.drawText (r.clip->name + (r.clip->getNumChannels() > 1 ? tr8 (" · estéreo") : juce::String()) + takeInfo + loops, rect.withHeight (headerH).reduced (5.0f, 0.0f).toNearestInt(),
                     juce::Justification::centredLeft, true);
 
         g.setColour (isSelected ? Theme::strongText : Theme::border);
@@ -1113,6 +1229,7 @@ private:
     bool dropHighlight = false;
     int dragStartX = 0;
     juce::int64 dragStartSample = 0;
+    juce::int64 loopingRegion = -1, loopBefore = 0;   // arrastre del bucle de una región
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TrackComponent)
 };

@@ -81,8 +81,14 @@ struct Region
     std::vector<std::shared_ptr<Clip>> takes;
     int activeTake = 0;
 
-    juce::int64 getLength() const { return clip->getLength(); }
-    juce::int64 getEnd() const    { return start + getLength(); }
+    // Bucle (al estilo Logic): la región dura loopLength muestras repitiendo el clip una y otra vez.
+    // 0 = sin bucle (dura lo que el clip)
+    juce::int64 loopLength = 0;
+
+    juce::int64 sourceLength() const { return clip->getLength(); }   // un solo pase del audio
+    juce::int64 getLength() const    { return juce::jmax (loopLength, sourceLength()); }
+    juce::int64 getEnd() const       { return start + getLength(); }
+    bool isLooped() const            { return loopLength > sourceLength(); }
 
     static juce::int64 newId()
     {
@@ -351,6 +357,28 @@ public:
         const juce::ScopedLock sl (lock);
         index = index < 0 ? (int) t.regions.size() : juce::jlimit (0, (int) t.regions.size(), index);
         t.regions.insert (t.regions.begin() + index, r);
+    }
+
+    // Bucle de una región: duración total (0 o menos que el clip = sin bucle)
+    void setRegionLoop (Track& t, juce::int64 regionId, juce::int64 length)
+    {
+        const juce::ScopedLock sl (lock);
+        for (auto& r : t.regions)
+            if (r.id == regionId)
+                r.loopLength = length > r.sourceLength() ? length : 0;
+    }
+
+    // Clip con el audio repetido hasta "length" muestras (para cortar una región en bucle)
+    static std::shared_ptr<Clip> tileClip (const Clip& c, juce::int64 length)
+    {
+        const int len = (int) c.getLength();
+        auto out = c.cloneEmpty (c.getNumChannels(), (int) length);
+        if (len <= 0) return out;
+        for (int ch = 0; ch < c.getNumChannels(); ++ch)
+            for (int done = 0; done < (int) length; done += len)
+                out->audio.copyFrom (ch, done, c.audio, ch, 0, juce::jmin (len, (int) length - done));
+        out->computePeaks();
+        return out;
     }
 
     void setRegionStart (Track& t, juce::int64 regionId, juce::int64 start)
@@ -752,6 +780,9 @@ public:
             {
                 if (r.id == regionId)
                 {
+                    // En bucle se mantiene el número de repeticiones aunque cambie la duración del audio
+                    if (r.isLooped() && newClip != nullptr && r.sourceLength() > 0)
+                        r.loopLength = (juce::int64) std::llround ((double) r.loopLength * (double) newClip->getLength() / (double) r.sourceLength());
                     old = std::move (r.clip);
                     r.clip = newClip;
                     if (r.activeTake >= 0 && r.activeTake < (int) r.takes.size())
@@ -1231,7 +1262,8 @@ private:
                         if (source == nullptr || std::abs (r.clip->slowSpeed - speed) > 1.0e-6)
                             continue;   // aún se está preparando: este clip calla
                         srcStart = (juce::int64) std::floor (((posD - (double) r.start) / speed) + 0.5);
-                        const juce::int64 slowLen = source->getNumSamples();
+                        const juce::int64 slowLen = r.isLooped() ? (juce::int64) std::llround ((double) r.getLength() / speed)
+                                                                 : (juce::int64) source->getNumSamples();
                         i = (int) juce::jlimit ((juce::int64) 0, (juce::int64) numSamples, -srcStart);
                         end = (int) juce::jlimit ((juce::int64) 0, (juce::int64) numSamples, slowLen - srcStart);
                         if (end <= i)
@@ -1247,11 +1279,18 @@ private:
                         while (j < end && covered[(size_t) j] == 0) ++j;
                         if (j > i)
                         {
-                            const int srcPos = (int) (srcStart + i);
-                            const float* left  = audio.getReadPointer (0, srcPos);
-                            const float* right = stereo ? audio.getReadPointer (1, srcPos) : left;
-                            w.addFrom (0, i, left, j - i);
-                            w.addFrom (1, i, right, j - i);
+                            // En bucle, al acabarse el audio se vuelve a empezar
+                            const juce::int64 srcLen = audio.getNumSamples();
+                            for (int k = i; k < j && srcLen > 0;)
+                            {
+                                const int srcPos = (int) ((srcStart + k) % srcLen);
+                                const int n = (int) juce::jmin ((juce::int64) (j - k), srcLen - srcPos);
+                                const float* left  = audio.getReadPointer (0, srcPos);
+                                const float* right = stereo ? audio.getReadPointer (1, srcPos) : left;
+                                w.addFrom (0, k, left, n);
+                                w.addFrom (1, k, right, n);
+                                k += n;
+                            }
                             std::fill (covered.begin() + i, covered.begin() + j, (uint8_t) 1);
                             hasSignal = true;
                         }

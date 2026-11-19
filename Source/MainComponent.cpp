@@ -1898,6 +1898,8 @@ std::unique_ptr<juce::XmlElement> MainComponent::createProjectXml (const juce::F
             auto* rx = tx->createNewChildElement ("REGION");
             rx->setAttribute ("start", juce::String (r.start));
             rx->setAttribute ("name", r.clip->name);
+            if (r.isLooped())
+                rx->setAttribute ("loopLength", juce::String (r.loopLength));
 
             // Cada clip se escribe una sola vez; si ya está en la carpeta del proyecto, se reutiliza
             auto writeClip = [&] (Clip& clip) -> juce::String
@@ -2203,11 +2205,15 @@ void MainComponent::loadProject (const juce::File& file, bool isRecovery)
                         reg.activeTake = juce::jlimit (0, (int) takes.size() - 1, rx->getIntAttribute ("activeTake", 0));
                         reg.clip = takes[(size_t) reg.activeTake];
                     }
+                if (rx->hasAttribute ("loopLength"))
+                    engine.setRegionLoop (*t, id, (juce::int64) std::llround ((double) rx->getStringAttribute ("loopLength").getLargeIntValue() * scale));
             }
             else if (auto clip = load (rx->getStringAttribute ("file")))
             {
                 clip->name = rx->getStringAttribute ("name", clip->name);
-                engine.addRegion (*t, clip, start);
+                const auto id = engine.addRegion (*t, clip, start);
+                if (rx->hasAttribute ("loopLength"))
+                    engine.setRegionLoop (*t, id, (juce::int64) std::llround ((double) rx->getStringAttribute ("loopLength").getLargeIntValue() * scale));
             }
         }
     }
@@ -3454,6 +3460,22 @@ void MainComponent::saveDiagnosticCaptures (const juce::File& folder)
         {
             if (self == nullptr) return;
             save ("3-editor.png");
+            // Región en bucle (x4): cómo se dibujan las repeticiones
+            for (auto* tc : self->trackComponents)
+            {
+                auto& t = tc->getTrack();
+                if (! t.regions.empty())
+                {
+                    const auto id = t.regions.front().id;
+                    self->engine.setRegionLoop (t, id, t.regions.front().sourceLength() * 4);
+                    self->setEditorVisible (false);
+                    self->resized();
+                    self->repaint();
+                    save ("12-bucle.png");
+                    self->engine.setRegionLoop (t, id, 0);
+                    break;
+                }
+            }
             // Mezclador desplegado (el proyecto nuevo ya trae buses: se ven los envíos)
             self->setEditorVisible (false);
             if (! self->mixerOpen)
@@ -3771,16 +3793,25 @@ void MainComponent::splitRegion (Track& track, juce::int64 regionId, juce::int64
         return out;
     };
 
+    // Región en bucle: se corta el audio ya repetido (las dos mitades quedan sin bucle)
+    const auto total = original.getLength();
+    auto unrolled = [&original, total] (const std::shared_ptr<Clip>& c)
+    {
+        return original.isLooped() ? AudioEngine::tileClip (*c, total) : c;
+    };
+
     Region left = original, right = original;
+    left.loopLength = right.loopLength = 0;
     right.id = Region::newId();
     right.start = original.start + offset;
-    left.clip = slice (original.clip, 0, offset);
-    right.clip = slice (original.clip, offset, original.getLength());
+    left.clip = slice (unrolled (original.clip), 0, offset);
+    right.clip = slice (unrolled (original.clip), offset, total);
     left.takes.clear(); right.takes.clear();
     for (auto& take : original.takes)
     {
-        if (auto l = slice (take, 0, offset)) left.takes.push_back (l);
-        if (auto r = slice (take, offset, take->getLength())) right.takes.push_back (r);
+        auto full = unrolled (take);
+        if (auto l = slice (full, 0, offset)) left.takes.push_back (l);
+        if (auto r = slice (full, offset, full->getLength())) right.takes.push_back (r);
     }
     left.activeTake = juce::jlimit (0, juce::jmax (0, (int) left.takes.size() - 1), original.activeTake);
     right.activeTake = juce::jlimit (0, juce::jmax (0, (int) right.takes.size() - 1), original.activeTake);

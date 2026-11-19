@@ -3,6 +3,12 @@
 <!-- Cada versión empieza con "## x.y.z" (igual que en CMakeLists.txt). Al publicarla, su apartado
      se copia como texto de la Release en GitHub y la app lo enseña al avisar de la actualización. -->
 
+## 2.4.0
+
+- Bucle de regiones, como en Logic: tirando del borde derecho de una región se alarga repitiendo su audio tantas veces como quieras. Al soltar cerca de una vuelta entera encaja en ella (x2, x3, x4...); con Mayús se puede dejar a mitad de vuelta.
+- Las repeticiones se ven algo más apagadas, con una muesca en cada vuelta, y el título dice cuántas son («bucle x4»). Se guarda con el proyecto y se puede deshacer.
+- Si editas el audio de una región en bucle, todas las vueltas cambian a la vez. Al cortar una región en bucle, las dos partes quedan como audio normal.
+
 ## 2.3.0
 
 - EQ de canal en cada pista y en el Master (en el Master afecta a toda la mezcla): 8 bandas al estilo Logic (corte de graves, estante de graves, cuatro campanas, estante de agudos y corte de agudos). Se abre con el botón «EQ» de la cabecera de la pista o con el recuadro «Ecualizador» de arriba de cada canal del mezclador, que enseña la curva.

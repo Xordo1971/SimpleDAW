@@ -562,7 +562,7 @@ public:
 
         // Cursor de reproducción
         const auto p = engine.getPosition() - r->start;
-        if (p >= 0 && p <= r->getLength())
+        if (p >= 0 && p <= r->sourceLength())
         {
             g.setColour (Theme::playhead);
             g.drawVerticalLine ((int) sampleToX (p), wa.getY(), wa.getBottom());
@@ -674,7 +674,7 @@ public:
     {
         if (auto* r = findRegion(); r != nullptr && waveArea.contains (e.getPosition()))
         {
-            setSelection (0, r->getLength());
+            setSelection (0, r->sourceLength());
             updateButtons();
             repaint();
         }
@@ -720,7 +720,7 @@ public:
         if (cmd && letter == 'v') { paste(); return true; }
         if (cmd && letter == 'a')
         {
-            if (auto* r = findRegion()) { setSelection (0, r->getLength()); updateButtons(); repaint(); }
+            if (auto* r = findRegion()) { setSelection (0, r->sourceLength()); updateButtons(); repaint(); }
             return true;
         }
         if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey) { deleteSelection(); return true; }
@@ -747,7 +747,7 @@ private:
     void setSelection (juce::int64 a, juce::int64 b)
     {
         auto* r = findRegion();
-        const auto len = r != nullptr ? r->getLength() : 0;
+        const auto len = r != nullptr ? r->sourceLength() : 0;
         selStart = juce::jlimit ((juce::int64) 0, len, juce::jmin (a, b));
         selEnd   = juce::jlimit ((juce::int64) 0, len, juce::jmax (a, b));
     }
@@ -759,7 +759,7 @@ private:
     juce::int64 xToSample (float x) const
     {
         auto* r = findRegion();
-        const auto len = r != nullptr ? r->getLength() : 0;
+        const auto len = r != nullptr ? r->sourceLength() : 0;
         const auto s = (juce::int64) std::llround (viewStart + (x - (float) waveArea.getX()) * spp);
         return juce::jlimit ((juce::int64) 0, len, s);
     }
@@ -767,7 +767,7 @@ private:
     double maxSpp() const
     {
         auto* r = findRegion();
-        const double len = r != nullptr ? (double) r->getLength() : 48000.0;
+        const double len = r != nullptr ? (double) r->sourceLength() : 48000.0;
         return juce::jmax (minSpp, len / juce::jmax (50, waveArea.getWidth()) * 1.5);
     }
 
@@ -775,7 +775,7 @@ private:
     {
         fitted = true;
         if (auto* r = findRegion())
-            spp = juce::jmax (minSpp, (double) r->getLength() / juce::jmax (50, waveArea.getWidth()));
+            spp = juce::jmax (minSpp, (double) r->sourceLength() / juce::jmax (50, waveArea.getWidth()));
         viewStart = 0.0;
         clampView();
         repaint();
@@ -801,7 +801,7 @@ private:
     void clampView()
     {
         auto* r = findRegion();
-        const double len = r != nullptr ? (double) r->getLength() : 0.0;
+        const double len = r != nullptr ? (double) r->sourceLength() : 0.0;
         const double visible = juce::jmax (1, waveArea.getWidth()) * spp;
         viewStart = juce::jlimit (0.0, juce::jmax (0.0, len - visible * 0.5), viewStart);
         hScroll.setRangeLimits (0.0, juce::jmax (len, viewStart + visible), juce::dontSendNotification);
@@ -836,7 +836,7 @@ private:
         else
             t << "Cursor " << formatSamples (cursor);
         t << tr8 ("   ·   ") << (r->clip->getNumChannels() > 1 ? tr8 ("Estéreo") : "Mono")
-          << tr8 (" · ") << formatSamples (r->getLength());
+          << tr8 (" · ") << formatSamples (r->sourceLength());
         if (clipboard.getNumSamples() > 0)
             t << tr8 ("   ·   Portapapeles ") << juce::String ((double) clipboard.getNumSamples() / sampleRate(), 2) << " s";
         return t;
@@ -1003,7 +1003,7 @@ private:
         if (auto* r = findRegion())
         {
             setSelection (selStart, selEnd);
-            cursor = juce::jlimit ((juce::int64) 0, r->getLength(), cursor);
+            cursor = juce::jlimit ((juce::int64) 0, r->sourceLength(), cursor);
         }
         clampView();
         updateButtons();
@@ -1148,9 +1148,9 @@ private:
         if (hasSelection()) { a = (int) selStart; b = (int) selEnd; }
         else
         {
-            const int oneSec = (int) juce::jmin ((juce::int64) sampleRate(), r->getLength());
-            a = fadeIn ? 0 : (int) r->getLength() - oneSec;
-            b = fadeIn ? oneSec : (int) r->getLength();
+            const int oneSec = (int) juce::jmin ((juce::int64) sampleRate(), r->sourceLength());
+            a = fadeIn ? 0 : (int) r->sourceLength() - oneSec;
+            b = fadeIn ? oneSec : (int) r->sourceLength();
         }
 
         applyEdit ([a, b, fadeIn] (const Clip& c)

@@ -33,6 +33,10 @@ Autor: Paco Frade. Toda la interfaz, los comentarios y los mensajes están en es
   `CHANNEL_EQ` dentro de cada canal. Editor gráfico en `ChannelEqEditor.h`; recuadro con la curva arriba de cada
   `ChannelStrip` y botón `EqChip` («EQ») en la cabecera de pista.
 - `TrackComponent.h`: cabecera y carril de cada pista (regiones, batería por compases, automatización).
+  Bucle de regiones: `Region::loopLength` (0 = sin bucle; `getLength()` = duración total, `sourceLength()` = un pase
+  del clip). El motor lee el clip en módulo; se alarga tirando del borde derecho (`isLoopZone`, `loopDrag`, encaja en
+  vueltas enteras salvo con Mayús). Cortar una región en bucle la desenrolla (`AudioEngine::tileClip`); el editor de
+  audio trabaja siempre sobre un pase (`sourceLength()`).
 - `Effects.h`: efectos integrados (Delay, Reverb, Chorus, Flanger, Phaser, Pitch, Ecualizador, Compresor, Overdrive, Ampli).
 - `AmpEditor.h`: frontal gráfico del ampli (Resources/amp-panel.jpg, 1774x887, diseño propio del autor; no usar
   imágenes de otros amplis o plugins). Los mandos se dibujan girando la propia imagen del de PRESENCE; coordenadas
